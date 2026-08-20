@@ -26,6 +26,16 @@ ALLOWED_LOG_LEVELS = ("WARNING", "INFO", "ERROR", "CRITICAL")
 EXPECTED_CONFIG_MODE = 0o600
 SECTION_KEY_PART_COUNT = 2
 
+
+def default_log_file() -> Path:
+    """Return the default log file path under `$XDG_STATE_HOME/mcps/mcps.log`.
+
+    Reads `XDG_STATE_HOME` at call time so tests/overrides take effect.
+    Falls back to `~/.local/state` per the XDG spec.
+    """
+    state_home = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(state_home) / "mcps" / "mcps.log"
+
 # Keys that are part of a section's config but are not credentials.
 NON_CREDENTIAL_KEYS = frozenset({"url", "verify_tls", "http_timeout", "log_file", "log_level"})
 
@@ -55,7 +65,7 @@ class SectionConfig:
 
 @dataclass(frozen=True)
 class ServerConfig:
-    log_file: Path | None
+    log_file: Path
     log_level: str
     http_timeout: float
     sections: Mapping[str, SectionConfig] = field(default_factory=dict)
@@ -201,7 +211,7 @@ def load_config(
     http_timeout = _coerce_float(timeout_raw, field_name="[server].http_timeout")
 
     log_file_raw = server_raw.get("log_file")
-    log_file = Path(log_file_raw).expanduser() if log_file_raw else None
+    log_file = Path(str(log_file_raw)).expanduser() if log_file_raw else default_log_file()
 
     sections: dict[str, SectionConfig] = {}
     for section_name, section_raw in data.items():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
@@ -14,7 +15,7 @@ from mcps.server import build_server
 
 
 def _build(config: ServerConfig):
-    configure_logging(None, "WARNING")
+    configure_logging(config.log_file, "WARNING")
     return build_server(config)
 
 
@@ -42,14 +43,14 @@ async def test_homeassistant_tools_registered(server_config: ServerConfig) -> No
     assert "homeassistant_call_service" in names
 
 
-async def test_absent_sections_produce_no_tools() -> None:
-    config = ServerConfig(log_file=None, log_level="WARNING", http_timeout=5.0, sections={})
+async def test_absent_sections_produce_no_tools(tmp_log_file: Path) -> None:
+    config = ServerConfig(log_file=tmp_log_file, log_level="WARNING", http_timeout=5.0, sections={})
     server = _build(config)
     names = await _list_tool_names(server)
     assert not any(name.startswith(("homeassistant_", "mealie_", "nirvana_")) for name in names)
 
 
-def test_missing_required_key_raises_configerror() -> None:
+def test_missing_required_key_raises_configerror(tmp_log_file: Path) -> None:
     section = SectionConfig(
         name="homeassistant",
         data={"url": "http://x"},  # missing token
@@ -57,7 +58,7 @@ def test_missing_required_key_raises_configerror() -> None:
         verify_tls=True,
     )
     config = ServerConfig(
-        log_file=None,
+        log_file=tmp_log_file,
         log_level="WARNING",
         http_timeout=5.0,
         sections={"homeassistant": section},
@@ -102,7 +103,7 @@ async def test_tool_result_never_contains_credential_value(
     assert "<redacted>" in text
 
 
-async def test_all_integrations_register_when_all_sections_present() -> None:
+async def test_all_integrations_register_when_all_sections_present(tmp_log_file: Path) -> None:
     ha = SectionConfig(
         name="homeassistant",
         data={"url": "http://ha", "token": "t"},
@@ -122,7 +123,7 @@ async def test_all_integrations_register_when_all_sections_present() -> None:
         verify_tls=True,
     )
     config = ServerConfig(
-        log_file=None,
+        log_file=tmp_log_file,
         log_level="WARNING",
         http_timeout=5.0,
         sections={"homeassistant": ha, "mealie": me, "nirvana": ni},

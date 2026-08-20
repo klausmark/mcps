@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 from mcp import Client
@@ -14,11 +15,11 @@ from mcps.logging_setup import configure_logging
 from mcps.server import build_server
 
 
-def _server(section: SectionConfig):
-    configure_logging(None, "WARNING")
+def _server(section: SectionConfig, tmp_log_file: Path):
+    configure_logging(tmp_log_file, "WARNING")
     return build_server(
         ServerConfig(
-            log_file=None,
+            log_file=tmp_log_file,
             log_level="WARNING",
             http_timeout=5.0,
             sections={"nirvana": section},
@@ -39,6 +40,7 @@ def _expected_basic(email: str, password: str) -> str:
 async def test_list_tasks_sends_basic_auth(
     nirvana_section: SectionConfig,
     mock_http: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    tmp_log_file: Path,
 ) -> None:
     captured: list[httpx.Request] = []
 
@@ -47,7 +49,7 @@ async def test_list_tasks_sends_basic_auth(
         return httpx.Response(200, json={"items": [{"id": "t1", "name": "Buy milk"}]})
 
     mock_http(handler)
-    server = _server(nirvana_section)
+    server = _server(nirvana_section, tmp_log_file)
     await _call(server, "nirvana_list_tasks", {})
     assert captured[0].headers.get("authorization") == _expected_basic(
         "user@example.com", "nirvana-secret-pw"
@@ -57,6 +59,7 @@ async def test_list_tasks_sends_basic_auth(
 async def test_complete_task_posts_to_completed_endpoint(
     nirvana_section: SectionConfig,
     mock_http: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    tmp_log_file: Path,
 ) -> None:
     captured: list[httpx.Request] = []
 
@@ -65,7 +68,7 @@ async def test_complete_task_posts_to_completed_endpoint(
         return httpx.Response(200, json={"id": "t1", "status": "completed"})
 
     mock_http(handler)
-    server = _server(nirvana_section)
+    server = _server(nirvana_section, tmp_log_file)
     await _call(server, "nirvana_complete_task", {"id": "t1"})
     assert captured[0].method == "POST"
     assert captured[0].url.path == "/2.0/tasks/t1/completed"
@@ -74,6 +77,7 @@ async def test_complete_task_posts_to_completed_endpoint(
 async def test_add_task_posts_payload(
     nirvana_section: SectionConfig,
     mock_http: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    tmp_log_file: Path,
 ) -> None:
     captured: list[httpx.Request] = []
 
@@ -84,7 +88,7 @@ async def test_add_task_posts_payload(
         return httpx.Response(201, json={"id": "t2", "name": body["name"]})
 
     mock_http(handler)
-    server = _server(nirvana_section)
+    server = _server(nirvana_section, tmp_log_file)
     await _call(server, "nirvana_add_task", {"name": "Buy milk", "bucket": "Today"})
     assert captured[0].url.path == "/2.0/tasks"
 
@@ -92,6 +96,7 @@ async def test_add_task_posts_payload(
 async def test_credential_redaction(
     nirvana_section: SectionConfig,
     mock_http: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    tmp_log_file: Path,
 ) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -100,7 +105,7 @@ async def test_credential_redaction(
         )
 
     mock_http(handler)
-    server = _server(nirvana_section)
+    server = _server(nirvana_section, tmp_log_file)
     result = await _call(server, "nirvana_list_tasks", {})
     text = str(result)
     assert "nirvana-secret-pw" not in text

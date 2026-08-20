@@ -22,6 +22,12 @@ def tmp_config_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def tmp_log_file(tmp_path: Path) -> Path:
+    """A log file path under `tmp_path` so tests never touch the real home."""
+    return tmp_path / "mcps.log"
+
+
+@pytest.fixture
 def mock_http(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[[Callable[[httpx.Request], httpx.Response]], None]:
@@ -86,9 +92,12 @@ def nirvana_section() -> SectionConfig:
 
 
 @pytest.fixture
-def server_config(homeassistant_section: SectionConfig) -> ServerConfig:
+def server_config(
+    homeassistant_section: SectionConfig,
+    tmp_log_file: Path,
+) -> ServerConfig:
     return ServerConfig(
-        log_file=None,
+        log_file=tmp_log_file,
         log_level="WARNING",
         http_timeout=5.0,
         sections={"homeassistant": homeassistant_section},

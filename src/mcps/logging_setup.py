@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import os
 import re
 import sys
 import time
@@ -37,8 +38,61 @@ class _PlainFormatter(logging.Formatter):
         return f"{ts} {level} {category} {record.getMessage()}"
 
 
-def configure_logging(path: Path | None, level: str) -> logging.Logger:
-    """Configure the root `mcps` logger to write flat text to file or stderr."""
+class ResilientFileHandler(logging.FileHandler):
+    """FileHandler that survives log rotation, deletion, and missing parent dirs.
+
+    On every emit, the file's `(st_dev, st_ino)` is compared against the handle
+    we opened with. If the path no longer exists — or has been replaced by a
+    new inode (the typical logrotate pattern) — the stream is closed, the
+    parent directory is recreated if needed, and the file is reopened.
+
+    Hard `OSError` during reopen is dropped on the floor: the next emit will
+    retry. This avoids cascading failures when the log target is temporarily
+    unavailable (e.g. filesystem unmounted).
+    """
+
+    def __init__(self, path: Path, **kwargs: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        super().__init__(path, **kwargs)
+        self._cache_identity()
+
+    def _cache_identity(self) -> None:
+        st = os.fstat(self.stream.fileno())
+        self._dev = st.st_dev
+        self._ino = st.st_ino
+
+    def _reopen(self) -> None:
+        if self.stream is not None:
+            self.stream.close()
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        self.stream = self._open()
+        self._cache_identity()
+
+    def _ensure_open(self) -> None:
+        try:
+            st = os.stat(self.baseFilename)
+        except FileNotFoundError:
+            self._reopen()
+            return
+        if (st.st_dev, st.st_ino) != (self._dev, self._ino):
+            self._reopen()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._ensure_open()
+        except OSError:
+            # Best-effort: surface once to stderr, then drop the record.
+            # The next emit will retry.
+            sys.stderr.write(
+                f"mcps: log file {self.baseFilename} became unavailable; "
+                "dropping record until next successful reopen\n"
+            )
+            return
+        super().emit(record)
+
+
+def configure_logging(path: Path, level: str) -> logging.Logger:
+    """Configure the root `mcps` logger to write flat text to `path` or stderr."""
     normalized = level.upper()
     if normalized not in ALLOWED_LEVELS:
         raise ValueError(f"log level must be one of {ALLOWED_LEVELS}, got {level!r}")
@@ -53,12 +107,9 @@ def configure_logging(path: Path | None, level: str) -> logging.Logger:
     return logger
 
 
-def _open_handler(path: Path | None) -> logging.Handler:
-    if path is None:
-        return logging.StreamHandler(sys.stderr)
+def _open_handler(path: Path) -> logging.Handler:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return logging.FileHandler(path, encoding="utf-8")
+        return ResilientFileHandler(path, encoding="utf-8")
     except OSError as exc:
         sys.stderr.write(f"mcps: cannot open log file {path}: {exc}; falling back to stderr\n")
         return logging.StreamHandler(sys.stderr)

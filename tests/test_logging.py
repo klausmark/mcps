@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
 
 import pytest
 
 from mcps.logging_setup import (
     ALLOWED_LEVELS,
+    ResilientFileHandler,
     configure_logging,
     get_logger,
     is_credential_key,
@@ -111,3 +114,101 @@ def test_log_call_records_ok_true_on_success(tmp_path: Path) -> None:
 def test_levels_constant() -> None:
     assert "DEBUG" not in ALLOWED_LEVELS
     assert "INFO" in ALLOWED_LEVELS
+
+
+def test_resilient_handler_creates_parent_dir(tmp_path: Path) -> None:
+    log_path = tmp_path / "deep" / "nested" / "mcps.log"
+    handler = ResilientFileHandler(log_path, encoding="utf-8")
+    try:
+        assert log_path.parent.is_dir()
+    finally:
+        handler.close()
+
+
+def test_resilient_handler_recreates_file_after_unlink(tmp_path: Path) -> None:
+    log_path = tmp_path / "mcps.log"
+    logger = configure_logging(log_path, "INFO")
+    logger.info("first")
+    for h in logger.handlers:
+        h.flush()
+    assert "first" in log_path.read_text()
+
+    log_path.unlink()
+    assert not log_path.exists()
+
+    logger.info("second")
+    for h in logger.handlers:
+        h.flush()
+    assert log_path.exists()
+    content = log_path.read_text()
+    assert "first" not in content
+    assert "second" in content
+
+
+def test_resilient_handler_reopens_after_rotation(tmp_path: Path) -> None:
+    log_path = tmp_path / "mcps.log"
+    logger = configure_logging(log_path, "INFO")
+    logger.info("before")
+    for h in logger.handlers:
+        h.flush()
+
+    rotated = tmp_path / "mcps.log.1"
+    os.rename(log_path, rotated)
+    log_path.write_text("")  # logrotate creates a fresh empty file
+
+    logger.info("after")
+    for h in logger.handlers:
+        h.flush()
+
+    assert "after" in log_path.read_text()
+    assert "before" not in log_path.read_text()
+    assert "before" in rotated.read_text()
+
+
+def test_resilient_handler_recreates_parent_dir(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logdir"
+    log_path = log_dir / "mcps.log"
+    logger = configure_logging(log_path, "INFO")
+    logger.info("seed")
+    for h in logger.handlers:
+        h.flush()
+
+    shutil.rmtree(log_dir)
+    assert not log_dir.exists()
+
+    logger.info("reborn")
+    for h in logger.handlers:
+        h.flush()
+
+    assert log_dir.is_dir()
+    assert log_path.exists()
+    assert "reborn" in log_path.read_text()
+
+
+def test_resilient_handler_drops_record_when_reopen_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log_path = tmp_path / "mcps.log"
+    logger = configure_logging(log_path, "INFO")
+    logger.info("before")
+    for h in logger.handlers:
+        h.flush()
+
+    # Make the handler believe the file is gone so the next emit triggers a reopen.
+    log_path.unlink()
+
+    # Force _reopen to fail so the next emit must drop the record.
+    def boom(self: ResilientFileHandler) -> None:
+        raise OSError("simulated")
+
+    monkeypatch.setattr(ResilientFileHandler, "_reopen", boom)
+
+    logger.info("after")
+    for h in logger.handlers:
+        h.flush()
+    captured = capsys.readouterr()
+    assert "became unavailable" in captured.err
+
+    # The "after" record must not be in the file (and the file should not have
+    # been recreated since the reopen was forced to fail).
+    assert not log_path.exists() or "after" not in log_path.read_text()
