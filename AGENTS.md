@@ -5,8 +5,7 @@ Guidance for AI agents and humans working on this codebase.
 ## Project
 
 `mcps` is a thin stdio MCP server acting as a logging and secret-injection
-facade in front of Home Assistant, Mealie and NirvanaHQ. SSH and email
-integrations are planned but out of scope for v1.
+facade in front of AI relevant systems.
 
 ## Stack
 
@@ -58,8 +57,7 @@ docs/
 
 ## Project rules (hard)
 
-- **Never expose secrets to the model.** No `secret_get` / `secret_list` /
-  `log_event` tools — forbidden by intent.
+- **Never expose secrets to the model.**
 - Tool results must never contain a credential value. Defenses:
   - `sanitize()` is applied to every parsed response in each integration
   - a test asserts no tool result matches any credential from config
@@ -88,9 +86,7 @@ docs/
 
 ## Forbidden
 
-- `secret_*` or `log_event` tools.
 - Any code path that returns a credential value to the model.
 - `print()` — use the logger (stdout is the MCP channel).
 - `urllib` / `requests` — use `httpx`.
 - DEBUG log level — out of scope for v1.
-- Systemd / daemon — stdio server is launched on demand by the MCP host.
