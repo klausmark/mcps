@@ -1,10 +1,10 @@
 # mcps
 
-Thin stdio MCP server acting as a logging and secret-injection facade for
-Home Assistant, Mealie and NirvanaHQ.
+Thin stdio MCP server acting as a logging and secret-injection facade for services
+that should be made available for AI agents.
 
-The server runs on demand, launched by an MCP host (Claude Desktop, MCP
-Inspector, etc.). Credentials are read from a local config file and never
+The server runs on demand, launched by an MCP host (OpenCode, Hermes Agent,
+Codex, etc.). Credentials are read from a local config file and never
 appear in tool results.
 
 ## Install
@@ -43,14 +43,17 @@ Precedence (low to high): file < env < CLI.
 
 ## Register with the MCP host
 
-Point your MCP host at `mcps` (or `python -m mcps`). Example for
-`claude_desktop_config.json`:
+Point your MCP host at `mcps` (or `python -m mcps`). Example for OpenCode
+(`opencode.json` or `opencode.jsonc`):
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "mcps": {
-      "command": "mcps"
+      "type": "local",
+      "command": ["mcps"],
+      "enabled": true
     }
   }
 }
@@ -60,10 +63,12 @@ To run as a different user:
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "mcps": {
-      "command": "sudo",
-      "args": ["-u", "mcps", "-n", "mcps"]
+      "type": "local",
+      "command": ["sudo", "-u", "mcps", "-n", "mcps"],
+      "enabled": true
     }
   }
 }
