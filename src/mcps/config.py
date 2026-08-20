@@ -224,3 +224,58 @@ def load_config(
 def _reset_for_tests() -> None:
     """No-op kept for symmetry; remove if unused."""
     sys.modules.pop(__name__, None)
+
+
+_INIT_CONFIG_TEMPLATE = """\
+# mcps config — created by `mcps init`.
+# Uncomment an integration and fill in values to enable it.
+# A section whose required keys are missing is silently skipped.
+
+[server]
+log_file = "~/.local/state/mcps/mcps.log"
+log_level = "INFO"
+http_timeout = 10.0
+
+# [homeassistant]
+# url = "http://hass.local:8123"
+# token = "..."
+# verify_tls = true
+
+# [mealie]
+# url = "http://mealie.local:9000"
+# api_key = "..."
+# verify_tls = true
+
+# [nirvana]
+# url = "https://api.nirvanahq.com"
+# email = "..."
+# password = "..."
+# verify_tls = true
+"""
+
+
+def init_default_path() -> Path:
+    """Return the path `mcps init` writes to by default.
+
+    Honors `MCPS_CONFIG_PATH`; otherwise the XDG config dir. We deliberately
+    do not fall back to `/etc/mcps/` here — that is a system path the user
+    has chosen explicitly, not one we should create arbitrarily.
+    """
+    env = os.environ.get("MCPS_CONFIG_PATH")
+    if env:
+        return Path(env)
+    return DEFAULT_CONFIG_PATHS[1]
+
+
+def init_config(path: Path, *, force: bool = False) -> Path:
+    """Write a default config template to `path` with mode 0600.
+
+    Raises `ConfigError` if the file exists and `force` is not set.
+    Returns the resolved path on success.
+    """
+    if path.exists() and not force:
+        raise ConfigError(f"config file already exists: {path}. Use --force to overwrite.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_INIT_CONFIG_TEMPLATE)
+    os.chmod(path, EXPECTED_CONFIG_MODE)
+    return path

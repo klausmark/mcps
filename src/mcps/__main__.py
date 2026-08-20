@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import stat
 import sys
 from pathlib import Path
 
-from mcps.config import ConfigError, load_config
+from mcps.config import ConfigError, init_config, init_default_path, load_config
 from mcps.logging_setup import configure_logging
 from mcps.server import build_server
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcps",
         description="Thin stdio MCP server for Home Assistant, Mealie and NirvanaHQ.",
@@ -27,7 +28,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-file", type=Path, default=None, help="Override log file path.")
     parser.add_argument("--log-level", default=None, help="Override log level (default INFO).")
     parser.add_argument("--http-timeout", type=float, default=None, help="HTTP timeout in seconds.")
-    return parser.parse_args(argv)
+
+    sub = parser.add_subparsers(dest="command")
+    init = sub.add_parser("init", help="Create a config file with default values.")
+    init.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Target path. Defaults to MCPS_CONFIG_PATH or XDG config dir.",
+    )
+    init.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing config file.",
+    )
+
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_parser().parse_args(argv)
 
 
 def cli_overrides(args: argparse.Namespace) -> dict[tuple[str, str], str]:
@@ -41,8 +61,27 @@ def cli_overrides(args: argparse.Namespace) -> dict[tuple[str, str], str]:
     return overrides
 
 
+def _run_init(args: argparse.Namespace) -> int:
+    path = args.config if args.config is not None else init_default_path()
+    try:
+        init_config(path, force=args.force)
+    except ConfigError as exc:
+        sys.stderr.write(f"mcps: {exc}\n")
+        return 2
+    st = os.stat(path)
+    mode = stat.S_IMODE(st.st_mode)
+    sys.stderr.write(
+        f"mcps: created config at {path} (mode {mode:o}, uid {st.st_uid}).\n"
+        f"      Edit it to add credentials, then run `mcps`.\n"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.command == "init":
+        return _run_init(args)
+
     try:
         config = load_config(
             path=args.config,
