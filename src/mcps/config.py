@@ -237,9 +237,9 @@ def _reset_for_tests() -> None:
 
 
 _INIT_CONFIG_TEMPLATE = """\
-# mcps config — created by `mcps init`.
+# mcps config - created by `mcps init`.
 # Uncomment an integration and fill in values to enable it.
-# A section whose required keys are missing is silently skipped.
+# A configured integration must contain all of its required keys.
 
 [server]
 log_file = "~/.local/state/mcps/mcps.log"
@@ -254,6 +254,11 @@ http_timeout = 10.0
 # [mealie]
 # url = "http://mealie.local:9000"
 # api_key = "..."
+# verify_tls = true
+
+# [netbox]
+# url = "https://netbox.example.com"
+# token = "..."
 # verify_tls = true
 
 # [nirvana]

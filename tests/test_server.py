@@ -47,7 +47,9 @@ async def test_absent_sections_produce_no_tools(tmp_log_file: Path) -> None:
     config = ServerConfig(log_file=tmp_log_file, log_level="WARNING", http_timeout=5.0, sections={})
     server = _build(config)
     names = await _list_tool_names(server)
-    assert not any(name.startswith(("homeassistant_", "mealie_", "nirvana_")) for name in names)
+    assert not any(
+        name.startswith(("homeassistant_", "mealie_", "netbox_", "nirvana_")) for name in names
+    )
 
 
 def test_missing_required_key_raises_configerror(tmp_log_file: Path) -> None:
@@ -116,6 +118,12 @@ async def test_all_integrations_register_when_all_sections_present(tmp_log_file:
         http_timeout=5.0,
         verify_tls=True,
     )
+    ne = SectionConfig(
+        name="netbox",
+        data={"url": "https://netbox.example", "token": "nbt_key.secret"},
+        http_timeout=5.0,
+        verify_tls=True,
+    )
     ni = SectionConfig(
         name="nirvana",
         data={"url": "https://ni", "email": "u@x", "password": "p"},
@@ -126,7 +134,7 @@ async def test_all_integrations_register_when_all_sections_present(tmp_log_file:
         log_file=tmp_log_file,
         log_level="WARNING",
         http_timeout=5.0,
-        sections={"homeassistant": ha, "mealie": me, "nirvana": ni},
+        sections={"homeassistant": ha, "mealie": me, "netbox": ne, "nirvana": ni},
     )
     server = _build(config)
     names = await _list_tool_names(server)
@@ -137,6 +145,7 @@ async def test_all_integrations_register_when_all_sections_present(tmp_log_file:
         "mealie_list_recipes",
         "mealie_get_recipe",
         "mealie_search_recipes",
+        "netbox_get",
         "nirvana_list_tasks",
         "nirvana_get_task",
         "nirvana_complete_task",

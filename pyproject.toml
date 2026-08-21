@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mcps"
 version = "0.1.0"
-description = "Thin stdio MCP server acting as a logging and secret-injection facade for Home Assistant, Mealie and NirvanaHQ."
+description = "Thin stdio MCP server acting as a logging and secret-injection facade for Home Assistant, Mealie, NetBox and NirvanaHQ."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

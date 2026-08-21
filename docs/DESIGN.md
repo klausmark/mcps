@@ -30,8 +30,8 @@ never sees a credential value.
   `$XDG_STATE_HOME/mcps/mcps.log`, stderr fallback. Levels: WARNING / INFO /
   ERROR / CRITICAL — no DEBUG. Parameter names matching credential patterns
   are logged as `<redacted>`.
-- **Tools**: one per logical action per integration. No `secret_*` and no
-  `log_event` tools — by intent.
+- **Tools**: one per logical action per integration, except NetBox's intentionally
+  generic read-only API tool. No `secret_*` and no `log_event` tools - by intent.
 
 ## Out of scope (v1)
 
@@ -46,4 +46,5 @@ never sees a credential value.
 
 - HA: `list_entities`, `get_state`, `call_service`
 - Mealie: `list_recipes`, `get_recipe`, `search_recipes`
+- NetBox: `get` (GET-only access below `/api/`, with token administration blocked)
 - Nirvana: `list_tasks`, `get_task`, `complete_task`, `add_task`

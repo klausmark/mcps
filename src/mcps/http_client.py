@@ -45,7 +45,10 @@ def sanitize(data: Any, credentials: list[str]) -> Any:
     if not credentials:
         return data
     if isinstance(data, dict):
-        return {key: sanitize(value, credentials) for key, value in data.items()}
+        return {
+            sanitize(key, credentials): sanitize(value, credentials)
+            for key, value in data.items()
+        }
     if isinstance(data, list):
         return [sanitize(item, credentials) for item in data]
     if isinstance(data, tuple):

@@ -78,6 +78,16 @@ def mealie_section() -> SectionConfig:
 
 
 @pytest.fixture
+def netbox_section() -> SectionConfig:
+    return SectionConfig(
+        name="netbox",
+        data={"url": "https://netbox.example", "token": "nbt_key.netbox-secret"},
+        http_timeout=5.0,
+        verify_tls=True,
+    )
+
+
+@pytest.fixture
 def nirvana_section() -> SectionConfig:
     return SectionConfig(
         name="nirvana",

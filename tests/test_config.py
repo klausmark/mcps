@@ -41,6 +41,27 @@ def test_env_overrides_section_keys(tmp_config_path: Path) -> None:
     assert ha.data["token"] == "new-token"
 
 
+def test_netbox_env_overrides_and_section_settings(tmp_config_path: Path) -> None:
+    _write(
+        tmp_config_path,
+        '[server]\nhttp_timeout = 8\n[netbox]\nurl = "https://old"\ntoken = "old-token"\n',
+    )
+    config = load_config(
+        path=tmp_config_path,
+        env={
+            "MCPS_NETBOX_URL": "https://new",
+            "MCPS_NETBOX_TOKEN": "new-token",
+            "MCPS_NETBOX_VERIFY_TLS": "false",
+            "MCPS_NETBOX_HTTP_TIMEOUT": "3.5",
+        },
+        cli_overrides={},
+    )
+    netbox = config.sections["netbox"]
+    assert netbox.data == {"url": "https://new", "token": "new-token"}
+    assert netbox.verify_tls is False
+    assert netbox.http_timeout == 3.5
+
+
 def test_cli_overrides_win_over_env(tmp_config_path: Path) -> None:
     _write(tmp_config_path, '[server]\nlog_level = "INFO"\n')
     config = load_config(

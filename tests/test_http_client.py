@@ -22,6 +22,12 @@ def test_sanitize_is_recursive() -> None:
     assert out == {"a": [{"b": "<redacted>"}, "<redacted>"], "c": ("x", "<redacted>")}
 
 
+def test_sanitize_replaces_credentials_in_dictionary_keys() -> None:
+    assert sanitize({"key-TOPSECRET": "value"}, ["TOPSECRET"]) == {
+        "key-<redacted>": "value"
+    }
+
+
 def test_sanitize_no_credentials_is_noop() -> None:
     data = {"x": 1, "y": ["a", "b"]}
     assert sanitize(data, []) == data

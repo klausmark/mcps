@@ -29,6 +29,7 @@ src/mcps/
     __init__.py        # register_all()
     homeassistant.py
     mealie.py
+    netbox.py
     nirvana.py
 tests/
   conftest.py
@@ -39,6 +40,7 @@ tests/
   integrations/
     test_homeassistant.py
     test_mealie.py
+    test_netbox.py
     test_nirvana.py
 docs/
   DESIGN.md

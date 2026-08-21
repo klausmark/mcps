@@ -16,7 +16,7 @@ from mcps.server import build_server
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcps",
-        description="Thin stdio MCP server for Home Assistant, Mealie and NirvanaHQ.",
+        description="Thin stdio MCP server for Home Assistant, Mealie, NetBox and NirvanaHQ.",
     )
     parser.add_argument(
         "--config",

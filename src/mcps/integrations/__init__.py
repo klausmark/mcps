@@ -8,11 +8,12 @@ from mcp.server import MCPServer
 
 from mcps.config import ConfigError, ServerConfig
 
-from . import homeassistant, mealie, nirvana
+from . import homeassistant, mealie, netbox, nirvana
 
 INTEGRATIONS = (
     homeassistant,
     mealie,
+    netbox,
     nirvana,
 )
 

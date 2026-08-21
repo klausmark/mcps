@@ -32,6 +32,10 @@ verify_tls = false
 url = "http://mealie.local:9000"
 api_key = "..."
 
+[netbox]
+url = "https://netbox.example.com"
+token = "..."
+
 [nirvana]
 url = "https://api.nirvanahq.com"
 email = "..."
@@ -78,7 +82,13 @@ To run as a different user:
 
 - `homeassistant_list_entities`, `homeassistant_get_state`, `homeassistant_call_service`
 - `mealie_list_recipes`, `mealie_get_recipe`, `mealie_search_recipes`
+- `netbox_get` - read an unescaped REST API path below `/api/` with optional query parameters
 - `nirvana_list_tasks`, `nirvana_get_task`, `nirvana_complete_task`, `nirvana_add_task`
+
+`netbox_get` only sends GET requests, refuses redirects, and blocks the NetBox token
+administration endpoint. Use a NetBox token belonging to a user with the minimum
+required read-only object permissions. Generic API responses can contain sensitive
+custom fields or plugin data that `mcps` cannot identify automatically.
 
 ## Logs
 
