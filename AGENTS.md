@@ -53,6 +53,8 @@ docs/
 - Comments explain *why*, not *what*.
 - Early validation: fail fast at startup with precise `ConfigError` / `ToolError`.
 - Minimize side effects.
+- YAGNI: don't add abstractions, layers, or fallbacks for a hypothetical future;
+  solve the problem at hand, not its imagined extensions.
 - DRY: shared HTTP factory in `http_client.py`; each integration is only
   `register(server, section_config)`.
 - No DEBUG logging in v1 (allowed: WARNING, INFO, ERROR, CRITICAL).
