@@ -65,10 +65,11 @@ docs/
   - a test asserts no tool result matches any credential from config
 - Log redaction: parameter names matching `token|password|api_key|secret|
   credential|*_token|*_key` are logged as `<redacted>`.
-- Config file must be `0600` and owned by the running uid; refuse to start
-  otherwise.
-- Logging target: `$XDG_STATE_HOME/mcps/mcps.log`, fallback to stderr with
-  a startup warning.
+- Default config file: `~/.mcps/config.toml`. On POSIX, correct it to `0600`
+  before reading; it must be owned by the running uid. Refuse to start if the
+  mode cannot be corrected or ownership differs. Windows relies on existing ACLs.
+- Logging target: `~/.mcps/logs/mcps.log`, fallback to stderr with a startup
+  warning. `mcps init` prepares `~/.mcps` and `~/.mcps/logs` as `0700` on POSIX.
 - Config precedence (low to high): file < env (`MCPS_*`) < CLI flags. Env
   naming: `MCPS_<SECTION>_<KEY>`, uppercase, underscore.
 - TLS verification per integration via `verify_tls`; when disabled, log a

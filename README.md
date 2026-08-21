@@ -15,12 +15,23 @@ uv sync
 
 ## Configure
 
-Create a config file (default `$XDG_CONFIG_HOME/mcps/config.toml`) owned by
-the running user with mode `0600`:
+Create the default config and log directory:
+
+```sh
+uv run mcps init
+```
+
+This creates `~/.mcps/config.toml` and prepares `~/.mcps/logs`. On POSIX,
+the config file is set to mode `0600`, while `~/.mcps` and its log directory
+are set to `0700`. Running `init` again refuses to overwrite the config unless
+`--force` is supplied. Use `mcps init --config <path>` or `MCPS_CONFIG_PATH`
+to select another config path.
+
+Edit the generated config to enable integrations:
 
 ```toml
 [server]
-log_file = "~/.local/state/mcps/mcps.log"
+log_file = "~/.mcps/logs/mcps.log"
 log_level = "INFO"
 
 [homeassistant]
@@ -44,6 +55,12 @@ password = "..."
 
 Override individual values via `MCPS_*` environment variables or CLI flags.
 Precedence (low to high): file < env < CLI.
+
+The config path can be overridden with `MCPS_CONFIG_PATH` or `--config`.
+The log path can be overridden with `MCPS_SERVER_LOG_FILE` or `--log-file`.
+On POSIX, `mcps` automatically corrects the config file to mode `0600` before
+reading it and fails if that is not possible or the file has another owner.
+On Windows, access is governed by the user's existing Windows ACLs.
 
 ## Register with the MCP host
 
@@ -93,11 +110,10 @@ custom fields or plugin data that `mcps` cannot identify automatically.
 ## Logs
 
 Flat-text log at `[server].log_file` (default
-`$XDG_STATE_HOME/mcps/mcps.log`). Falls back to stderr if the file cannot
-be opened.
+`~/.mcps/logs/mcps.log`). Falls back to stderr if the file cannot be opened.
 
 ## Troubleshoot
 
 - "config file not found" — set `--config` or `MCPS_CONFIG_PATH`.
-- "must have mode 0600" — `chmod 600 <config>`.
+- "could not be changed to 600" — ensure the current user can change the config file.
 - "missing required keys" — your `[section]` lacks `url` or credentials.

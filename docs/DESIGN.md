@@ -24,10 +24,13 @@ never sees a credential value.
   `<redacted>`. A test enumerates tools and asserts no result matches any
   config credential string.
 - **Config**: TOML file + `MCPS_*` env vars + CLI flags
-  (precedence: file < env < CLI). File must be mode `0600` and owned by the
-  running uid; startup fails otherwise.
+  (precedence: file < env < CLI). The default is `~/.mcps/config.toml`.
+  On POSIX, the file is corrected to mode `0600` before it is read and must
+  be owned by the running uid; startup fails if either condition cannot be met.
+  Windows relies on the user's existing ACLs.
 - **Logging**: flat text (one event per line) to
-  `$XDG_STATE_HOME/mcps/mcps.log`, stderr fallback. Levels: WARNING / INFO /
+  `~/.mcps/logs/mcps.log`, stderr fallback. `mcps init` prepares `~/.mcps`
+  and `~/.mcps/logs` with mode `0700` on POSIX. Levels: WARNING / INFO /
   ERROR / CRITICAL — no DEBUG. Parameter names matching credential patterns
   are logged as `<redacted>`.
 - **Tools**: one per logical action per integration, except NetBox's intentionally

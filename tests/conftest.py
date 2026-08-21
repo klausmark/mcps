@@ -28,6 +28,15 @@ def tmp_log_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect `Path.home()` so tests cannot touch the real home directory."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    return home
+
+
+@pytest.fixture
 def mock_http(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[[Callable[[httpx.Request], httpx.Response]], None]:

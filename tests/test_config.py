@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mcps.config import ConfigError, default_log_file, load_config
+from mcps.config import ConfigError, default_config_file, default_log_file, load_config
 
 
 def _write(path: Path, content: str) -> None:
@@ -15,9 +15,7 @@ def _write(path: Path, content: str) -> None:
     os.chmod(path, 0o600)
 
 
-def test_load_minimal_config(tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HOME", str(tmp_config_path))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+def test_load_minimal_config(tmp_config_path: Path, fake_home: Path) -> None:
     _write(tmp_config_path, '[server]\nlog_level = "INFO"\n')
     config = load_config(path=tmp_config_path, env={}, cli_overrides={})
     assert config.log_level == "INFO"
@@ -77,11 +75,28 @@ def test_missing_file(tmp_path: Path) -> None:
         load_config(path=tmp_path / "nope.toml", env={}, cli_overrides={})
 
 
-def test_invalid_mode(tmp_path: Path) -> None:
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode bits are not available")
+def test_invalid_mode_is_corrected(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text("")
     os.chmod(path, 0o644)
-    with pytest.raises(ConfigError, match="must have mode 600"):
+    load_config(path=path, env={}, cli_overrides={})
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode bits are not available")
+def test_invalid_mode_fails_when_chmod_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("")
+    os.chmod(path, 0o644)
+
+    def fail_chmod(path: Path, mode: int) -> None:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+    with pytest.raises(ConfigError, match="could not be changed to 600"):
         load_config(path=path, env={}, cli_overrides={})
 
 
@@ -129,30 +144,18 @@ def test_env_path_override(tmp_config_path: Path, monkeypatch: pytest.MonkeyPatc
     assert config.log_level == "INFO"
 
 
-def test_default_log_file_uses_xdg_state_home(
-    tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_default_paths_use_mcps_home_directory(
+    tmp_config_path: Path, fake_home: Path
 ) -> None:
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_config_path / "state"))
     _write(tmp_config_path, "[server]\n")
     config = load_config(path=tmp_config_path, env={}, cli_overrides={})
-    assert config.log_file == tmp_config_path / "state" / "mcps" / "mcps.log"
-
-
-def test_default_log_file_falls_back_to_home(
-    tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("HOME", str(tmp_config_path))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
-    _write(tmp_config_path, "[server]\n")
-    config = load_config(path=tmp_config_path, env={}, cli_overrides={})
-    assert config.log_file == tmp_config_path / ".local" / "state" / "mcps" / "mcps.log"
+    assert default_config_file() == fake_home / ".mcps" / "config.toml"
+    assert config.log_file == fake_home / ".mcps" / "logs" / "mcps.log"
 
 
 def test_log_file_setting_overrides_default(
-    tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_config_path: Path,
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_config_path))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     custom = tmp_config_path / "custom.log"
     _write(tmp_config_path, f'[server]\nlog_file = "{custom}"\n')
     config = load_config(path=tmp_config_path, env={}, cli_overrides={})
@@ -162,8 +165,6 @@ def test_log_file_setting_overrides_default(
 def test_env_log_file_overrides_setting(
     tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_config_path))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     custom = tmp_config_path / "from-env.log"
     monkeypatch.setenv("MCPS_SERVER_LOG_FILE", str(custom))
     _write(tmp_config_path, '[server]\nlog_file = "/from/file.log"\n')
@@ -174,8 +175,6 @@ def test_env_log_file_overrides_setting(
 def test_cli_log_file_wins_over_env(
     tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_config_path))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     from_env = tmp_config_path / "from-env.log"
     from_cli = tmp_config_path / "from-cli.log"
     monkeypatch.setenv("MCPS_SERVER_LOG_FILE", str(from_env))

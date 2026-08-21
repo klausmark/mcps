@@ -14,27 +14,23 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_CONFIG_PATHS = (
-    Path("/etc/mcps/config.toml"),
-    Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "mcps" / "config.toml",
-)
-
 DEFAULT_HTTP_TIMEOUT = 10.0
 DEFAULT_LOG_LEVEL = "INFO"
 ALLOWED_LOG_LEVELS = ("WARNING", "INFO", "ERROR", "CRITICAL")
 
 EXPECTED_CONFIG_MODE = 0o600
+EXPECTED_DIRECTORY_MODE = 0o700
 SECTION_KEY_PART_COUNT = 2
 
 
-def default_log_file() -> Path:
-    """Return the default log file path under `$XDG_STATE_HOME/mcps/mcps.log`.
+def default_config_file() -> Path:
+    """Return the default config path under the current user's home directory."""
+    return Path.home() / ".mcps" / "config.toml"
 
-    Reads `XDG_STATE_HOME` at call time so tests/overrides take effect.
-    Falls back to `~/.local/state` per the XDG spec.
-    """
-    state_home = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(state_home) / "mcps" / "mcps.log"
+
+def default_log_file() -> Path:
+    """Return the default log file path under the current user's home directory."""
+    return Path.home() / ".mcps" / "logs" / "mcps.log"
 
 # Keys that are part of a section's config but are not credentials.
 NON_CREDENTIAL_KEYS = frozenset({"url", "verify_tls", "http_timeout", "log_file", "log_level"})
@@ -77,25 +73,44 @@ def _default_config_path(explicit: Path | None) -> Path:
     env = os.environ.get("MCPS_CONFIG_PATH")
     if env:
         return Path(env)
-    for candidate in DEFAULT_CONFIG_PATHS:
-        if candidate.exists():
-            return candidate
-    # Fall back to the first default so error messages are predictable.
-    return DEFAULT_CONFIG_PATHS[1]
+    return default_config_file()
 
 
-def _validate_file_mode(path: Path) -> None:
-    st = os.stat(path)
-    mode = stat.S_IMODE(st.st_mode)
-    if mode != EXPECTED_CONFIG_MODE:
-        raise ConfigError(
-            f"config file {path} must have mode {EXPECTED_CONFIG_MODE:o}, "
-            f"got {mode & 0o777:o}. Fix with: chmod 600 {path}"
-        )
+def _ensure_config_security(path: Path) -> None:
+    """Ensure a config file is private on platforms with POSIX permissions."""
+    if os.name != "posix":
+        return
+    try:
+        st = os.stat(path)
+    except FileNotFoundError as exc:
+        raise ConfigError(f"config file not found: {path}") from exc
+    except PermissionError as exc:
+        raise ConfigError(f"config file not accessible: {path}") from exc
+
     if st.st_uid != os.getuid():
         raise ConfigError(
             f"config file {path} must be owned by the current user (uid {os.getuid()}), "
             f"owned by uid {st.st_uid}."
+        )
+
+    mode = stat.S_IMODE(st.st_mode)
+    if mode == EXPECTED_CONFIG_MODE:
+        return
+    try:
+        os.chmod(path, EXPECTED_CONFIG_MODE)
+    except OSError as exc:
+        raise ConfigError(
+            f"config file {path} has mode {mode:o} and could not be changed to "
+            f"{EXPECTED_CONFIG_MODE:o}: {exc}"
+        ) from exc
+    try:
+        corrected_mode = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError as exc:
+        raise ConfigError(f"could not verify permissions for config file {path}: {exc}") from exc
+    if corrected_mode != EXPECTED_CONFIG_MODE:
+        raise ConfigError(
+            f"config file {path} must have mode {EXPECTED_CONFIG_MODE:o}, "
+            f"got {corrected_mode:o} after chmod"
         )
 
 
@@ -194,8 +209,8 @@ def load_config(
 ) -> ServerConfig:
     cli_overrides = cli_overrides or {}
     resolved = _default_config_path(path)
+    _ensure_config_security(resolved)
     data = _read_toml(resolved)
-    _validate_file_mode(resolved)
 
     _apply_env_overrides(data, env)
     _apply_cli_overrides(data, cli_overrides)
@@ -242,7 +257,7 @@ _INIT_CONFIG_TEMPLATE = """\
 # A configured integration must contain all of its required keys.
 
 [server]
-log_file = "~/.local/state/mcps/mcps.log"
+log_file = "~/.mcps/logs/mcps.log"
 log_level = "INFO"
 http_timeout = 10.0
 
@@ -272,14 +287,31 @@ http_timeout = 10.0
 def init_default_path() -> Path:
     """Return the path `mcps init` writes to by default.
 
-    Honors `MCPS_CONFIG_PATH`; otherwise the XDG config dir. We deliberately
-    do not fall back to `/etc/mcps/` here — that is a system path the user
-    has chosen explicitly, not one we should create arbitrarily.
+    Honors `MCPS_CONFIG_PATH`; otherwise uses `~/.mcps/config.toml`.
     """
     env = os.environ.get("MCPS_CONFIG_PATH")
     if env:
         return Path(env)
-    return DEFAULT_CONFIG_PATHS[1]
+    return default_config_file()
+
+
+def init_log_directory() -> Path:
+    """Create the default mcps directories and secure them on POSIX."""
+    log_directory = default_log_file().parent
+    for directory in (log_directory.parent, log_directory):
+        try:
+            directory.mkdir(mode=EXPECTED_DIRECTORY_MODE, parents=True, exist_ok=True)
+            if os.name == "posix":
+                os.chmod(directory, EXPECTED_DIRECTORY_MODE)
+                mode = stat.S_IMODE(directory.stat().st_mode)
+                if mode != EXPECTED_DIRECTORY_MODE:
+                    raise ConfigError(
+                        f"directory {directory} must have mode {EXPECTED_DIRECTORY_MODE:o}, "
+                        f"got {mode:o} after chmod"
+                    )
+        except OSError as exc:
+            raise ConfigError(f"could not prepare directory {directory}: {exc}") from exc
+    return log_directory
 
 
 def init_config(path: Path, *, force: bool = False) -> Path:
@@ -290,7 +322,11 @@ def init_config(path: Path, *, force: bool = False) -> Path:
     """
     if path.exists() and not force:
         raise ConfigError(f"config file already exists: {path}. Use --force to overwrite.")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_INIT_CONFIG_TEMPLATE)
-    os.chmod(path, EXPECTED_CONFIG_MODE)
+    init_log_directory()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_INIT_CONFIG_TEMPLATE, encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"could not create config file {path}: {exc}") from exc
+    _ensure_config_security(path)
     return path

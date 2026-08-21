@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
-import stat
 import sys
 from pathlib import Path
 
-from mcps.config import ConfigError, init_config, init_default_path, load_config
+from mcps.config import (
+    ConfigError,
+    default_log_file,
+    init_config,
+    init_default_path,
+    load_config,
+)
 from mcps.logging_setup import configure_logging
 from mcps.server import build_server
 
@@ -23,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Path to the TOML config file. Defaults to $MCPS_CONFIG_PATH, "
-        "$XDG_CONFIG_HOME/mcps/config.toml, or /etc/mcps/config.toml.",
+        "or ~/.mcps/config.toml.",
     )
     parser.add_argument("--log-file", type=Path, default=None, help="Override log file path.")
     parser.add_argument("--log-level", default=None, help="Override log level (default INFO).")
@@ -35,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         type=Path,
         default=None,
-        help="Target path. Defaults to MCPS_CONFIG_PATH or XDG config dir.",
+        help="Target path. Defaults to MCPS_CONFIG_PATH or ~/.mcps/config.toml.",
     )
     init.add_argument(
         "--force",
@@ -68,10 +73,9 @@ def _run_init(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         sys.stderr.write(f"mcps: {exc}\n")
         return 2
-    st = os.stat(path)
-    mode = stat.S_IMODE(st.st_mode)
     sys.stderr.write(
-        f"mcps: created config at {path} (mode {mode:o}, uid {st.st_uid}).\n"
+        f"mcps: created config at {path}.\n"
+        f"      Prepared log directory at {default_log_file().parent}.\n"
         f"      Edit it to add credentials, then run `mcps`.\n"
     )
     return 0
