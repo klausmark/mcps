@@ -76,6 +76,34 @@ def _apply_auth(client: httpx.Client, data: Mapping[str, str]) -> None:
     )
 
 
+def _read_response_body(response: httpx.Response) -> bytes:
+    if response.is_redirect:
+        raise NetBoxError("NetBox returned a redirect, which was refused")
+    if response.is_error:
+        raise NetBoxError(f"NetBox returned HTTP {response.status_code}")
+
+    content_length = response.headers.get("Content-Length")
+    if content_length and int(content_length) > MAX_RESPONSE_BYTES:
+        raise NetBoxError("NetBox response exceeds the 1 MiB limit")
+
+    body = bytearray()
+    for chunk in response.iter_bytes():
+        body.extend(chunk)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise NetBoxError("NetBox response exceeds the 1 MiB limit")
+    return bytes(body)
+
+
+def _parse_json_object_or_array(body: bytes) -> JsonValue:
+    try:
+        data = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise NetBoxError("NetBox returned invalid JSON") from None
+    if not isinstance(data, (dict, list)):
+        raise NetBoxError("NetBox returned an unsupported JSON value")
+    return data
+
+
 def _get(
     section: SectionConfig,
     path: str,
@@ -84,36 +112,17 @@ def _get(
     safe_path = _validate_api_path(path)
     client = make_client(section, base_url=section.data["url"], apply_auth=_apply_auth)
     try:
-        try:
-            with client.stream("GET", safe_path, params=query) as response:
-                if response.is_redirect:
-                    raise NetBoxError("NetBox returned a redirect, which was refused")
-                if response.is_error:
-                    raise NetBoxError(f"NetBox returned HTTP {response.status_code}")
-
-                content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > MAX_RESPONSE_BYTES:
-                    raise NetBoxError("NetBox response exceeds the 1 MiB limit")
-
-                body = bytearray()
-                for chunk in response.iter_bytes():
-                    body.extend(chunk)
-                    if len(body) > MAX_RESPONSE_BYTES:
-                        raise NetBoxError("NetBox response exceeds the 1 MiB limit")
-        except NetBoxError:
-            raise
-        except (httpx.HTTPError, ValueError):
-            raise NetBoxError("NetBox request failed") from None
-
-        try:
-            data = json.loads(body)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise NetBoxError("NetBox returned invalid JSON") from None
-        if not isinstance(data, (dict, list)):
-            raise NetBoxError("NetBox returned an unsupported JSON value")
-        return sanitize(data, section.credential_values())
+        with client.stream("GET", safe_path, params=query) as response:
+            body = _read_response_body(response)
+    except NetBoxError:
+        raise
+    except (httpx.HTTPError, ValueError):
+        raise NetBoxError("NetBox request failed") from None
     finally:
         client.close()
+
+    data = _parse_json_object_or_array(body)
+    return sanitize(data, section.credential_values())
 
 
 def register(server: MCPServer, section: SectionConfig) -> None:
