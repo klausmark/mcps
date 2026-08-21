@@ -106,8 +106,14 @@ def test_bad_toml(tmp_config_path: Path) -> None:
         load_config(path=tmp_config_path, env={}, cli_overrides={})
 
 
-def test_invalid_log_level(tmp_config_path: Path) -> None:
+def test_debug_log_level_is_valid(tmp_config_path: Path) -> None:
     _write(tmp_config_path, '[server]\nlog_level = "DEBUG"\n')
+    config = load_config(path=tmp_config_path, env={}, cli_overrides={})
+    assert config.log_level == "DEBUG"
+
+
+def test_invalid_log_level(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '[server]\nlog_level = "TRACE"\n')
     with pytest.raises(ConfigError, match="log_level must be one of"):
         load_config(path=tmp_config_path, env={}, cli_overrides={})
 

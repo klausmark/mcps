@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -33,9 +34,9 @@ def test_is_credential_key_matches_known_patterns() -> None:
     assert not is_credential_key("domain")
 
 
-def test_configure_logging_rejects_debug(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="log level"):
-        configure_logging(tmp_path / "x.log", "DEBUG")
+def test_configure_logging_accepts_debug(tmp_path: Path) -> None:
+    logger = configure_logging(tmp_path / "x.log", "DEBUG")
+    assert logger.level == logging.DEBUG
 
 
 def test_configure_logging_creates_file(tmp_path: Path) -> None:
@@ -112,7 +113,7 @@ def test_log_call_records_ok_true_on_success(tmp_path: Path) -> None:
 
 
 def test_levels_constant() -> None:
-    assert "DEBUG" not in ALLOWED_LEVELS
+    assert "DEBUG" in ALLOWED_LEVELS
     assert "INFO" in ALLOWED_LEVELS
 
 

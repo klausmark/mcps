@@ -15,7 +15,7 @@ from typing import Any, ParamSpec, TypeVar
 
 LOGGER_NAME = "mcps"
 
-ALLOWED_LEVELS = ("WARNING", "INFO", "ERROR", "CRITICAL")
+ALLOWED_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 DEFAULT_LEVEL = "INFO"
 
 CREDENTIAL_PARAM_RE = re.compile(

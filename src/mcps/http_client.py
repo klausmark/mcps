@@ -65,7 +65,7 @@ def sanitize(data: Any, credentials: list[str]) -> Any:
 def warn_if_tls_disabled(section: SectionConfig) -> None:
     """Caller invokes this at integration registration time when verify_tls is off."""
     if not section.verify_tls:
-        get_logger().warning(
+        get_logger().debug(
             "integration %s verify_tls=false: TLS certificate verification is disabled",
             section.name,
         )

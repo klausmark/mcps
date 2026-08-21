@@ -57,7 +57,7 @@ docs/
   solve the problem at hand, not its imagined extensions.
 - DRY: shared HTTP factory in `http_client.py`; each integration is only
   `register(server, section_config)`.
-- No DEBUG logging in v1 (allowed: WARNING, INFO, ERROR, CRITICAL).
+- DEBUG logging is permitted only when explicitly justified. Do not scatter speculative DEBUG calls; treat each one as a deliberate decision.
 
 ## Project rules (hard)
 
@@ -94,4 +94,3 @@ docs/
 - Any code path that returns a credential value to the model.
 - `print()` — use the logger (stdout is the MCP channel).
 - `urllib` / `requests` — use `httpx`.
-- DEBUG log level — out of scope for v1.
