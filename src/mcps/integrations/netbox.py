@@ -61,7 +61,11 @@ def _validate_api_path(path: str) -> str:
         raise NetBoxError("path must be an unescaped absolute path below /api/")
     if any(segment in (".", "..") for segment in path.split("/")):
         raise NetBoxError("path traversal is not allowed")
-    if path == "/api/users/tokens" or path.startswith("/api/users/tokens/"):
+    if "//" in path:
+        raise NetBoxError("repeated path separators are not allowed")
+    if path == "/api/users/tokens" or path.startswith(
+        ("/api/users/tokens/", "/api/users/tokens.")
+    ):
         raise NetBoxError("the NetBox token administration endpoint is not available")
     return path
 

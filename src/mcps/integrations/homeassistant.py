@@ -10,6 +10,7 @@ from mcp.server import MCPServer
 from mcps.config import SectionConfig
 from mcps.http_client import request_json, warn_if_tls_disabled
 from mcps.logging_setup import log_call
+from mcps.validation import validate_path_parameter
 
 NAME = "homeassistant"
 REQUIRED_KEYS = ("url", "token")
@@ -52,6 +53,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     @log_call("homeassistant_get_state")
     def get_state(entity_id: str) -> dict:
         """Get the state of one entity, e.g. `light.kitchen`."""
+        validate_path_parameter(entity_id, "entity_id", pattern=r"[a-z0-9_]+\.[a-z0-9_]+")
         return _call(section, "GET", f"/api/states/{entity_id}")
 
     @server.tool(
@@ -61,4 +63,6 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     @log_call("homeassistant_call_service")
     def call_service(domain: str, service: str, data: dict | None = None) -> list[dict]:
         """Call `domain.service` with optional service data; returns the affected states."""
+        validate_path_parameter(domain, "domain", pattern=r"[a-z0-9_]+")
+        validate_path_parameter(service, "service", pattern=r"[a-z0-9_]+")
         return _call(section, "POST", f"/api/services/{domain}/{service}", json=data or {})

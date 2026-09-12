@@ -12,6 +12,7 @@ from mcp.server import MCPServer
 from mcps.config import SectionConfig
 from mcps.http_client import request_json, warn_if_tls_disabled
 from mcps.logging_setup import log_call
+from mcps.validation import validate_path_parameter
 
 NAME = "nirvana"
 REQUIRED_KEYS = ("url", "email", "password")
@@ -53,12 +54,14 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     @log_call("nirvana_get_task")
     def get_task(id: str) -> dict:
         """Fetch a single task by its NirvanaHQ id."""
+        validate_path_parameter(id, "id")
         return _call(section, "GET", f"/2.0/tasks/{id}")
 
     @server.tool(name="nirvana_complete_task", description="Mark a NirvanaHQ task as completed.")
     @log_call("nirvana_complete_task")
     def complete_task(id: str) -> dict:
         """Complete (close) a task by id."""
+        validate_path_parameter(id, "id")
         return _call(section, "POST", f"/2.0/tasks/{id}/completed")
 
     @server.tool(name="nirvana_add_task", description="Add a task to NirvanaHQ.")

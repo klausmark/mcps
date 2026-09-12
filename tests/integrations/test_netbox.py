@@ -106,6 +106,9 @@ async def test_legacy_token_uses_token_auth(
         "/api/dcim\\devices/",
         "/api/users/tokens/",
         "/api/users/tokens/1/",
+        "/api//users/tokens/",
+        "/api/users//tokens/",
+        "/api/users/tokens.json",
         "/api/" + "a" * 508,
     ],
 )

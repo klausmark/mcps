@@ -11,6 +11,7 @@ from mcps.config import SectionConfig
 from mcps.errors import ToolError
 from mcps.http_client import request_json, warn_if_tls_disabled
 from mcps.logging_setup import log_call
+from mcps.validation import validate_path_parameter
 
 NAME = "mealie"
 REQUIRED_KEYS = ("url", "api_key")
@@ -45,6 +46,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     @log_call("mealie_get_recipe")
     def get_recipe(slug: str) -> dict:
         """Fetch a recipe by slug (e.g. `chicken-tikka-masala`)."""
+        validate_path_parameter(slug, "slug")
         return _call(section, "GET", f"/api/recipes/{slug}")
 
     @server.tool(name="mealie_search_recipes", description="Search Mealie recipes by query.")
