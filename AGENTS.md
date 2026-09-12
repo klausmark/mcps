@@ -63,12 +63,13 @@ docs/
 - All code, comments, docstrings and log messages: **English**.
 - Functions small and focused; descriptive names.
 - Comments explain *why*, not *what*.
-- Early validation: fail fast at startup with precise `ConfigError` / `ToolError`.
+- Validate configuration early: startup failures use precise `ConfigError`
+  messages; tool-call failures use safe `ToolError` messages.
 - Minimize side effects.
 - YAGNI: don't add abstractions, layers, or fallbacks for a hypothetical future;
   solve the problem at hand, not its imagined extensions.
-- DRY: shared HTTP factory in `http_client.py`; each integration is only
-  `register(server, section_config)`.
+- DRY: keep shared HTTP behavior in `http_client.py`. Integration modules export
+  `NAME` and `REQUIRED_KEYS` and implement `register(server, section_config)`.
 - DEBUG logging is permitted only when explicitly justified. Do not scatter speculative DEBUG calls; treat each one as a deliberate decision.
 
 ## Project rules (hard)
@@ -82,8 +83,9 @@ docs/
     against every configured credential
   - `log_call` records only the exception type, never its message
   - a test asserts no tool result matches any credential from config
-- Log redaction: parameter names matching `token|password|api_key|secret|
-  credential|*_token|*_key` are logged as `<redacted>`.
+- Log redaction: parameter names are matched case-insensitively as
+  `token|password|api_key|apikey|secret|credential|*_token|*_key` and logged
+  as `<redacted>`.
 - Default config file: `~/.mcps/config.toml`. On POSIX, correct it to `0600`
   before reading; it must be owned by the running uid. Refuse to start if the
   mode cannot be corrected or ownership differs. Windows relies on existing ACLs.
@@ -96,8 +98,9 @@ docs/
 - Upstream bodies are read through the bounded reader in `http_client.py`;
   oversized responses fail instead of being truncated.
 - Integration settings are validated before the server starts: unknown
-  sections, non-snake_case keys, empty required values, invalid URLs, and
-  non-positive/non-finite timeouts are rejected with `ConfigError`.
+  sections, unknown settings, non-snake_case names, empty required values,
+  invalid or path-prefixed URLs, and non-positive/non-finite timeouts are
+  rejected with `ConfigError`.
 - New integration modules must export `NAME` and `REQUIRED_KEYS` and
   implement `register(server, section_config)`. Add them to
   `integrations/__init__.py::INTEGRATIONS` and write tests under
@@ -105,11 +108,12 @@ docs/
 
 ## Working agreements
 
-- Run tests before committing (`uv run pytest`; lint with `uv run ruff check src tests`).
-- Do not modify files outside your assigned scope.
-- Do not change public interfaces without documenting it.
-- Keep commits small.
-- Never rewrite another agent's commits.
+- Before committing, run `uv run pytest` and `uv run ruff check src tests`.
+- Modify only files required by the assigned task.
+- Document public interface changes in `README.md` or `docs/DESIGN.md`.
+- Keep each commit focused on one logical change.
+- Never amend, rebase, squash, drop, or otherwise rewrite commits made by
+  another agent.
 
 ## Common tasks
 
@@ -122,6 +126,5 @@ docs/
 
 ## Forbidden
 
-- Any code path that returns a credential value to the model.
 - `print()` — use the logger (stdout is the MCP channel).
 - `urllib` / `requests` — use `httpx`.
