@@ -10,7 +10,8 @@ import pytest
 from mcp import Client
 
 from mcps.config import ConfigError, SectionConfig, ServerConfig
-from mcps.integrations.netbox import MAX_RESPONSE_BYTES, NetBoxError, _validate_api_path
+from mcps.http_client import MAX_RESPONSE_BYTES
+from mcps.integrations.netbox import NetBoxError, _validate_api_path
 from mcps.logging_setup import configure_logging, get_logger
 from mcps.server import build_server
 

@@ -13,14 +13,13 @@ from mcp.types import ToolAnnotations
 
 from mcps.config import ConfigError, SectionConfig
 from mcps.errors import ToolError
-from mcps.http_client import make_client, sanitize, warn_if_tls_disabled
+from mcps.http_client import make_client, read_bounded_body, sanitize, warn_if_tls_disabled
 from mcps.logging_setup import log_call
 
 NAME = "netbox"
 REQUIRED_KEYS = ("url", "token")
 
 MAX_PATH_LENGTH = 512
-MAX_RESPONSE_BYTES = 1024 * 1024
 API_PATH = re.compile(r"^/api/[A-Za-z0-9._~/-]*$")
 
 QueryValue = str | int | bool | list[str]
@@ -81,24 +80,6 @@ def _apply_auth(client: httpx.Client, data: Mapping[str, str]) -> None:
     )
 
 
-def _read_response_body(response: httpx.Response) -> bytes:
-    if response.is_redirect:
-        raise NetBoxError("NetBox returned a redirect, which was refused")
-    if response.is_error:
-        raise NetBoxError(f"NetBox returned HTTP {response.status_code}")
-
-    content_length = response.headers.get("Content-Length")
-    if content_length and int(content_length) > MAX_RESPONSE_BYTES:
-        raise NetBoxError("NetBox response exceeds the 1 MiB limit")
-
-    body = bytearray()
-    for chunk in response.iter_bytes():
-        body.extend(chunk)
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise NetBoxError("NetBox response exceeds the 1 MiB limit")
-    return bytes(body)
-
-
 def _parse_json_object_or_array(body: bytes) -> JsonValue:
     try:
         data = json.loads(body)
@@ -120,8 +101,8 @@ def _get(
             make_client(section, base_url=section.data["url"], apply_auth=_apply_auth) as client,
             client.stream("GET", safe_path, params=query) as response,
         ):
-            body = _read_response_body(response)
-    except NetBoxError:
+            body = read_bounded_body(response, label="NetBox")
+    except ToolError:
         raise
     except (httpx.HTTPError, ValueError):
         raise NetBoxError("NetBox request failed") from None

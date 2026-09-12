@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -13,6 +14,44 @@ from mcps.errors import ToolError
 from mcps.logging_setup import get_logger
 
 AuthApplier = Callable[[httpx.Client, Mapping[str, str]], None]
+
+# Upstream responses larger than this are refused rather than truncated.
+MAX_RESPONSE_BYTES = 1024 * 1024
+
+
+def _limit_label(max_bytes: int) -> str:
+    return f"{max_bytes // (1024 * 1024)} MiB"
+
+
+def read_bounded_body(
+    response: httpx.Response, *, label: str, max_bytes: int = MAX_RESPONSE_BYTES
+) -> bytes:
+    """Stream a response body, refusing redirects, errors, and oversized payloads.
+
+    `Content-Length` is checked first for an early rejection, but the actual
+    decoded bytes are counted while streaming, so a missing or misleading length
+    still cannot exceed the limit.
+    """
+    if response.is_redirect:
+        raise ToolError(f"{label} returned a redirect, which was refused")
+    if response.is_error:
+        raise ToolError(f"{label} returned HTTP {response.status_code}")
+
+    content_length = response.headers.get("Content-Length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            raise ToolError(f"{label} returned an invalid Content-Length") from None
+        if declared > max_bytes:
+            raise ToolError(f"{label} response exceeds the {_limit_label(max_bytes)} limit")
+
+    body = bytearray()
+    for chunk in response.iter_bytes():
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ToolError(f"{label} response exceeds the {_limit_label(max_bytes)} limit")
+    return bytes(body)
 
 
 def make_client(
@@ -52,20 +91,21 @@ def request_json(
 ) -> Any:
     """Request JSON without exposing transport, header, or parsing error details."""
     try:
-        with make_client(section, base_url=section.data["url"], apply_auth=apply_auth) as client:
-            response = client.request(method, path, **kwargs)
-            if response.is_redirect:
-                raise ToolError(f"{section.name} returned a redirect, which was refused")
-            if response.is_error:
-                raise ToolError(f"{section.name} returned HTTP {response.status_code}")
-            if not response.content:
-                return None
-            try:
-                data = response.json()
-            except ValueError:
-                raise ToolError(f"{section.name} returned invalid JSON") from None
+        with (
+            make_client(section, base_url=section.data["url"], apply_auth=apply_auth) as client,
+            client.stream(method, path, **kwargs) as response,
+        ):
+            body = read_bounded_body(response, label=section.name)
+    except ToolError:
+        raise
     except (httpx.HTTPError, ValueError):
         raise ToolError(f"{section.name} request failed") from None
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ToolError(f"{section.name} returned invalid JSON") from None
     return sanitize(data, section.credential_values())
 
 
