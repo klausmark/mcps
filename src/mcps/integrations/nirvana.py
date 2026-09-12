@@ -12,6 +12,7 @@ from mcp.server import MCPServer
 from mcps.config import SectionConfig
 from mcps.http_client import request_json, warn_if_tls_disabled
 from mcps.logging_setup import log_call
+from mcps.responses import expect_dict, expect_items
 from mcps.validation import validate_path_parameter
 
 NAME = "nirvana"
@@ -42,27 +43,21 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     @log_call("nirvana_list_tasks")
     def list_tasks() -> list[dict]:
         """Return all tasks in the user's NirvanaHQ account."""
-        data = _call(section, "GET", "/2.0/tasks")
-        if isinstance(data, dict) and "items" in data:
-            items = data["items"]
-            return items if isinstance(items, list) else []
-        if isinstance(data, list):
-            return data
-        return []
+        return expect_items(_call(section, "GET", "/2.0/tasks"), label="NirvanaHQ")
 
     @server.tool(name="nirvana_get_task", description="Get one NirvanaHQ task by id.")
     @log_call("nirvana_get_task")
     def get_task(id: str) -> dict:
         """Fetch a single task by its NirvanaHQ id."""
         validate_path_parameter(id, "id")
-        return _call(section, "GET", f"/2.0/tasks/{id}")
+        return expect_dict(_call(section, "GET", f"/2.0/tasks/{id}"), label="NirvanaHQ")
 
     @server.tool(name="nirvana_complete_task", description="Mark a NirvanaHQ task as completed.")
     @log_call("nirvana_complete_task")
     def complete_task(id: str) -> dict:
         """Complete (close) a task by id."""
         validate_path_parameter(id, "id")
-        return _call(section, "POST", f"/2.0/tasks/{id}/completed")
+        return expect_dict(_call(section, "POST", f"/2.0/tasks/{id}/completed"), label="NirvanaHQ")
 
     @server.tool(name="nirvana_add_task", description="Add a task to NirvanaHQ.")
     @log_call("nirvana_add_task")
@@ -71,4 +66,4 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         payload: dict = {"name": name}
         if bucket is not None:
             payload["bucket"] = bucket
-        return _call(section, "POST", "/2.0/tasks", json=payload)
+        return expect_dict(_call(section, "POST", "/2.0/tasks", json=payload), label="NirvanaHQ")
