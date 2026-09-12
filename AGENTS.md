@@ -5,7 +5,7 @@ Guidance for AI agents and humans working on this codebase.
 ## Project
 
 `mcps` is a thin stdio MCP server acting as a logging and secret-injection
-facade in front of AI relevant systems.
+facade for services exposed to AI agents.
 
 ## Stack
 
@@ -36,24 +36,8 @@ src/mcps/
     netbox.py
     nirvana.py
 tests/
-  conftest.py
-  test_config.py
-  test_logging.py
-  test_http_client.py
-  test_server.py
-  test_cli.py
-  test_init.py
-  test_integration_validation.py
-  test_path_parameters.py
-  test_response_limits.py
-  test_response_shapes.py
-  test_secret_isolation.py
-  test_tool_errors.py
-  integrations/
-    test_homeassistant.py
-    test_mealie.py
-    test_netbox.py
-    test_nirvana.py
+  test_*.py           # shared behavior and security coverage
+  integrations/       # integration-specific tests
 docs/
   DESIGN.md
 ```
@@ -68,9 +52,9 @@ docs/
 - Minimize side effects.
 - YAGNI: don't add abstractions, layers, or fallbacks for a hypothetical future;
   solve the problem at hand, not its imagined extensions.
-- DRY: keep shared HTTP behavior in `http_client.py`. Integration modules export
-  `NAME` and `REQUIRED_KEYS` and implement `register(server, section_config)`.
-- DEBUG logging is permitted only when explicitly justified. Do not scatter speculative DEBUG calls; treat each one as a deliberate decision.
+- DRY: keep shared HTTP behavior in `http_client.py`.
+- DEBUG logging is permitted only when explicitly justified. Treat each DEBUG
+  call as a deliberate decision.
 
 ## Project rules (hard)
 
@@ -83,16 +67,20 @@ docs/
     against every configured credential
   - `log_call` records only the exception type, never its message
   - a test asserts no tool result matches any credential from config
-- Log redaction: parameter names are matched case-insensitively as
-  `token|password|api_key|apikey|secret|credential|*_token|*_key` and logged
-  as `<redacted>`.
+- Log redaction: parameter names equal to `token`, `password`, `api_key`,
+  `apikey`, `secret`, or `credential`, or ending in `_token` or `_key`, are
+  matched case-insensitively and logged as `<redacted>`.
 - Default config file: `~/.mcps/config.toml`. On POSIX, correct it to `0600`
   before reading; it must be owned by the running uid. Refuse to start if the
   mode cannot be corrected or ownership differs. Windows relies on existing ACLs.
-- Logging target: `~/.mcps/logs/mcps.log`, fallback to stderr with a startup
-  warning. `mcps init` prepares `~/.mcps` and `~/.mcps/logs` as `0700` on POSIX.
-- Config precedence (low to high): file < env (`MCPS_*`) < CLI flags. Env
-  naming: `MCPS_<SECTION>_<KEY>`, uppercase, underscore.
+- Logging target: `~/.mcps/logs/mcps.log`, with fallback to stderr and a startup
+  message. `mcps init` prepares `~/.mcps` and `~/.mcps/logs` as `0700` on POSIX.
+- Setting precedence (low to high): file < env (`MCPS_*`) < corresponding CLI
+  flag. CLI overrides exist only for `[server].log_file`, `[server].log_level`,
+  and `[server].http_timeout`. Env naming is `MCPS_<SECTION>_<KEY>`, uppercase
+  with underscores.
+- The config path uses `--config`, then `MCPS_CONFIG_PATH`, then
+  `~/.mcps/config.toml`.
 - TLS verification per integration via `verify_tls`; when disabled, log a
   startup DEBUG line (deliberately not WARNING — see `docs/DESIGN.md`).
 - Upstream bodies are read through the bounded reader in `http_client.py`;
@@ -108,8 +96,10 @@ docs/
 
 ## Working agreements
 
-- Before committing, run `uv run pytest` and `uv run ruff check src tests`.
-- Modify only files required by the assigned task.
+- Run relevant tests after changes. Before committing, run `uv run pytest` and
+  `uv run ruff check src tests`.
+- Keep changes scoped to the assigned task, including necessary tests and
+  documentation.
 - Document public interface changes in `README.md` or `docs/DESIGN.md`.
 - Keep each commit focused on one logical change.
 - Never amend, rebase, squash, drop, or otherwise rewrite commits made by
