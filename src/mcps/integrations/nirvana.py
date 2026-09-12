@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Mapping
+from dataclasses import replace
 
 import httpx
 from mcp.server import MCPServer
@@ -16,10 +17,14 @@ NAME = "nirvana"
 REQUIRED_KEYS = ("url", "email", "password")
 
 
-def _apply_auth(client: httpx.Client, data: Mapping[str, str]) -> None:
+def basic_token(data: Mapping[str, str]) -> str:
+    """Return the actual credential sent on the wire, also needed for redaction."""
     raw = f"{data['email']}:{data['password']}".encode()
-    token = base64.b64encode(raw).decode("ascii")
-    client.headers["Authorization"] = f"Basic {token}"
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _apply_auth(client: httpx.Client, data: Mapping[str, str]) -> None:
+    client.headers["Authorization"] = f"Basic {basic_token(data)}"
 
 
 def _call(section: SectionConfig, method: str, path: str, **kwargs) -> object:
@@ -27,6 +32,9 @@ def _call(section: SectionConfig, method: str, path: str, **kwargs) -> object:
 
 
 def register(server: MCPServer, section: SectionConfig) -> None:
+    section = replace(
+        section, redaction_values=(*section.redaction_values, basic_token(section.data))
+    )
     warn_if_tls_disabled(section)
 
     @server.tool(name="nirvana_list_tasks", description="List NirvanaHQ tasks.")

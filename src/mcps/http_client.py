@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -74,24 +75,27 @@ def sanitize(data: Any, credentials: list[str]) -> Any:
     Defense in depth: even if an upstream server echoes a token in its JSON
     body, the model never sees the value.
     """
-    if not credentials:
+    values = sorted({value for value in credentials if value}, key=len, reverse=True)
+    if not values:
         return data
-    if isinstance(data, dict):
-        return {
-            sanitize(key, credentials): sanitize(value, credentials)
-            for key, value in data.items()
-        }
-    if isinstance(data, list):
-        return [sanitize(item, credentials) for item in data]
-    if isinstance(data, tuple):
-        return tuple(sanitize(item, credentials) for item in data)
-    if isinstance(data, str):
-        out = data
-        for cred in credentials:
-            if cred and cred in out:
-                out = out.replace(cred, "<redacted>")
-        return out
-    return data
+    # Match once, longest first: overlapping credentials must not reveal suffixes
+    # or cause a later replacement to modify an earlier redaction marker.
+    pattern = re.compile("|".join(re.escape(value) for value in values))
+
+    def redact(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {redact(key): redact(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [redact(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(redact(item) for item in value)
+        if isinstance(value, str):
+            return pattern.sub("<redacted>", value)
+        if isinstance(value, (int, float)) and pattern.search(str(value)):
+            return "<redacted>"
+        return value
+
+    return redact(data)
 
 
 def warn_if_tls_disabled(section: SectionConfig) -> None:

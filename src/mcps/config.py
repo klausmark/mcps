@@ -53,10 +53,12 @@ class SectionConfig:
     data: Mapping[str, str]
     http_timeout: float
     verify_tls: bool
+    redaction_values: tuple[str, ...] = field(default=(), repr=False)
 
     def credential_values(self) -> list[str]:
         """Return values for keys that look like credentials (for output sanitization)."""
-        return [v for k, v in self.data.items() if k not in NON_CREDENTIAL_KEYS]
+        own_values = [v for k, v in self.data.items() if k not in NON_CREDENTIAL_KEYS]
+        return list(dict.fromkeys([*own_values, *self.redaction_values]))
 
 
 @dataclass(frozen=True)

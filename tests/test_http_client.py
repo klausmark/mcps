@@ -37,6 +37,14 @@ def test_sanitize_empty_string_credentials_are_skipped() -> None:
     assert sanitize("hello", [""]) == "hello"
 
 
+def test_sanitize_overlapping_credentials_does_not_reveal_suffix() -> None:
+    assert sanitize("secret-longer", ["secret", "secret-longer"]) == "<redacted>"
+
+
+def test_sanitize_numeric_credentials_in_json_numbers() -> None:
+    assert sanitize({"code": 123456}, ["123456"]) == {"code": "<redacted>"}
+
+
 def test_make_client_sets_verify_false() -> None:
     section = SectionConfig(name="x", data={"url": "http://x"}, http_timeout=1.0, verify_tls=False)
     seen: dict[str, Any] = {}
