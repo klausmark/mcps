@@ -60,11 +60,21 @@ def test_netbox_env_overrides_and_section_settings(tmp_config_path: Path) -> Non
     assert netbox.http_timeout == 3.5
 
 
+def test_env_server_override(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '[server]\nlog_level = "INFO"\n')
+    config = load_config(
+        path=tmp_config_path,
+        env={"MCPS_SERVER_LOG_LEVEL": "ERROR"},
+        cli_overrides={},
+    )
+    assert config.log_level == "ERROR"
+
+
 def test_cli_overrides_win_over_env(tmp_config_path: Path) -> None:
     _write(tmp_config_path, '[server]\nlog_level = "INFO"\n')
     config = load_config(
         path=tmp_config_path,
-        env={"MCPS_LOG_LEVEL": "ERROR"},
+        env={"MCPS_SERVER_LOG_LEVEL": "ERROR"},
         cli_overrides={("server", "log_level"): "WARNING"},
     )
     assert config.log_level == "WARNING"
@@ -143,10 +153,27 @@ def test_credential_values_excludes_url_and_flags(tmp_config_path: Path) -> None
     assert ha.credential_values() == ["y"]
 
 
-def test_env_path_override(tmp_config_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_explicit_path_wins_over_env_path(
+    tmp_config_path: Path, tmp_path: Path
+) -> None:
+    _write(tmp_config_path, '[server]\nlog_level = "WARNING"\n')
+    other = tmp_path / "other.toml"
+    _write(other, '[server]\nlog_level = "ERROR"\n')
+    config = load_config(
+        path=tmp_config_path,
+        env={"MCPS_CONFIG_PATH": str(other)},
+        cli_overrides={},
+    )
+    assert config.log_level == "WARNING"
+
+
+def test_env_path_override(tmp_config_path: Path) -> None:
     _write(tmp_config_path, "[server]\n")
-    monkeypatch.setenv("MCPS_CONFIG_PATH", str(tmp_config_path))
-    config = load_config(path=None, env={}, cli_overrides={})
+    config = load_config(
+        path=None,
+        env={"MCPS_CONFIG_PATH": str(tmp_config_path)},
+        cli_overrides={},
+    )
     assert config.log_level == "INFO"
 
 
@@ -191,3 +218,62 @@ def test_cli_log_file_wins_over_env(
         cli_overrides={("server", "log_file"): str(from_cli)},
     )
     assert config.log_file == from_cli
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "true", ""])
+def test_invalid_server_timeout_is_rejected(tmp_config_path: Path, value: str) -> None:
+    _write(tmp_config_path, f"[server]\nhttp_timeout = {value!r}\n")
+    if value in ("nan", "inf"):
+        _write(tmp_config_path, f"[server]\nhttp_timeout = {value}\n")
+    with pytest.raises(ConfigError, match=r"\[server\]\.http_timeout"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "true", ""])
+def test_invalid_section_timeout_is_rejected(tmp_config_path: Path, value: str) -> None:
+    _write(tmp_config_path, f'[homeassistant]\nurl = "http://x"\ntoken = "y"\nhttp_timeout = {value!r}\n')
+    if value in ("nan", "inf"):
+        _write(
+            tmp_config_path,
+            f'[homeassistant]\nurl = "http://x"\ntoken = "y"\nhttp_timeout = {value}\n',
+        )
+    with pytest.raises(ConfigError, match=r"\[homeassistant\]\.http_timeout"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+def test_toml_boolean_timeout_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '[server]\nhttp_timeout = true\n[homeassistant]\nurl = "http://x"\ntoken = "y"\nhttp_timeout = false\n')
+    with pytest.raises(ConfigError, match=r"\[server\]\.http_timeout"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+def test_server_unknown_setting_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, "[server]\nhttp_timout = 5\n")
+    with pytest.raises(ConfigError, match="unknown setting"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+def test_invalid_section_key_name_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '[homeassistant]\nurl = "http://x"\nBadKey = "y"\n')
+    with pytest.raises(ConfigError, match="invalid key name"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+def test_config_path_env_is_not_a_section(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, "[server]\n")
+    config = load_config(
+        path=None,
+        env={"MCPS_CONFIG_PATH": str(tmp_config_path)},
+        cli_overrides={},
+    )
+    assert config.sections == {}
+
+
+def test_override_on_non_table_section_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, 'server = "oops"\n')
+    with pytest.raises(ConfigError, match=r"section \[server\] must be a table"):
+        load_config(
+            path=tmp_config_path,
+            env={"MCPS_SERVER_LOG_LEVEL": "INFO"},
+            cli_overrides={},
+        )

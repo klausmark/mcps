@@ -5,6 +5,7 @@ Precedence (low -> high): file < env vars (`MCPS_*`) < CLI flags.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import stat
@@ -35,10 +36,16 @@ def default_log_file() -> Path:
 # Keys that are part of a section's config but are not credentials.
 NON_CREDENTIAL_KEYS = frozenset({"url", "verify_tls", "http_timeout", "log_file", "log_level"})
 
+# Settings recognized inside `[server]`; anything else is a typo worth rejecting.
+SERVER_KEYS = frozenset({"log_file", "log_level", "http_timeout"})
+
 # Validation: section names and key names are snake_case identifiers.
 IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 ENV_KEY_PREFIX = "MCPS_"
+
+# Reserved env vars are consumed by the app itself, never as section overrides.
+RESERVED_ENV_KEYS = frozenset({"MCPS_CONFIG_PATH"})
 
 
 class ConfigError(ValueError):
@@ -69,12 +76,12 @@ class ServerConfig:
     sections: Mapping[str, SectionConfig] = field(default_factory=dict)
 
 
-def _default_config_path(explicit: Path | None) -> Path:
+def _default_config_path(explicit: Path | None, env: Mapping[str, str]) -> Path:
     if explicit is not None:
         return explicit
-    env = os.environ.get("MCPS_CONFIG_PATH")
-    if env:
-        return Path(env)
+    value = env.get("MCPS_CONFIG_PATH")
+    if value:
+        return Path(value)
     return default_config_file()
 
 
@@ -133,29 +140,31 @@ def _validate_identifier(kind: str, value: str) -> None:
         raise ConfigError(f"invalid {kind} name: {value!r} (must be snake_case)")
 
 
+def _set_override(data: dict, section_name: str, key_name: str, value: str) -> None:
+    existing = data.get(section_name)
+    if existing is not None and not isinstance(existing, dict):
+        raise ConfigError(f"section [{section_name}] must be a table")
+    data.setdefault(section_name, {})
+    data[section_name][key_name] = value
+
+
 def _apply_env_overrides(data: dict, env: Mapping[str, str]) -> None:
     """Overlay `MCPS_<SECTION>_<KEY>` env vars onto the parsed config tree."""
     prefix = ENV_KEY_PREFIX
     for env_key, env_value in env.items():
-        if not env_key.startswith(prefix):
+        if env_key in RESERVED_ENV_KEYS or not env_key.startswith(prefix):
             continue
         suffix = env_key[len(prefix) :]
         parts = suffix.lower().split("_", 1)
         if len(parts) != SECTION_KEY_PART_COUNT or not parts[0] or not parts[1]:
             continue
         section_name, key_name = parts
-        if section_name == "server":
-            data.setdefault("server", {})
-            data["server"][key_name] = env_value
-        else:
-            data.setdefault(section_name, {})
-            data[section_name][key_name] = env_value
+        _set_override(data, section_name, key_name, env_value)
 
 
 def _apply_cli_overrides(data: dict, overrides: Mapping[tuple[str, str], str]) -> None:
     for (section_name, key_name), value in overrides.items():
-        data.setdefault(section_name, {})
-        data[section_name][key_name] = value
+        _set_override(data, section_name, key_name, value)
 
 
 def _coerce_bool(value: object) -> bool:
@@ -170,11 +179,17 @@ def _coerce_bool(value: object) -> bool:
     raise ConfigError(f"expected boolean, got {value!r}")
 
 
-def _coerce_float(value: object, *, field_name: str) -> float:
+def _coerce_positive_timeout(value: object, *, field_name: str) -> float:
+    """Return a positive, finite timeout, rejecting booleans and empty values."""
+    if isinstance(value, bool):
+        raise ConfigError(f"{field_name}: expected a positive, finite number")
     try:
-        return float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError) as exc:
-        raise ConfigError(f"{field_name}: expected number, got {value!r}") from exc
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ConfigError(f"{field_name}: expected a positive, finite number") from None
+    if not math.isfinite(number) or number <= 0:
+        raise ConfigError(f"{field_name}: expected a positive, finite number")
+    return number
 
 
 def _parse_section(
@@ -182,25 +197,28 @@ def _parse_section(
 ) -> SectionConfig:
     if not isinstance(raw, Mapping):
         raise ConfigError(f"section [{name}] must be a table, got {type(raw).__name__}")
+    if "http_timeout" in raw:
+        timeout = _coerce_positive_timeout(raw["http_timeout"], field_name=f"[{name}].http_timeout")
+    else:
+        timeout = default_timeout
+    verify_tls_raw = raw.get("verify_tls", True)
+    verify_tls = _coerce_bool(
+        verify_tls_raw if isinstance(verify_tls_raw, bool) else str(verify_tls_raw)
+    )
+
     flat: dict[str, str] = {}
     for key, value in raw.items():
+        if key in ("http_timeout", "verify_tls"):
+            continue
+        if not IDENTIFIER_RE.match(key):
+            raise ConfigError(f"section [{name}]: invalid key name {key!r} (must be snake_case)")
         if not isinstance(value, (str, int, float, bool)):
             raise ConfigError(
                 f"section [{name}] key {key!r}: only strings, numbers, and booleans are supported"
             )
         flat[key] = str(value)
-    verify_tls_raw = flat.pop("verify_tls", "true")
-    timeout_raw = flat.pop("http_timeout", None)
-    if timeout_raw:
-        timeout = _coerce_float(timeout_raw, field_name=f"[{name}].http_timeout")
-    else:
-        timeout = default_timeout
-    return SectionConfig(
-        name=name,
-        data=flat,
-        http_timeout=timeout,
-        verify_tls=_coerce_bool(verify_tls_raw),
-    )
+
+    return SectionConfig(name=name, data=flat, http_timeout=timeout, verify_tls=verify_tls)
 
 
 def load_config(
@@ -210,7 +228,7 @@ def load_config(
     cli_overrides: Mapping[tuple[str, str], str] | None = None,
 ) -> ServerConfig:
     cli_overrides = cli_overrides or {}
-    resolved = _default_config_path(path)
+    resolved = _default_config_path(path, env)
     _ensure_config_security(resolved)
     data = _read_toml(resolved)
 
@@ -220,12 +238,17 @@ def load_config(
     server_raw = data.get("server", {})
     if not isinstance(server_raw, Mapping):
         raise ConfigError("[server] must be a table")
+    unknown_server_keys = set(server_raw) - SERVER_KEYS
+    if unknown_server_keys:
+        raise ConfigError(
+            f"[server]: unknown setting(s): {', '.join(sorted(unknown_server_keys))}"
+        )
     log_level_raw = server_raw.get("log_level", DEFAULT_LOG_LEVEL)
     log_level = str(log_level_raw).upper()
     if log_level not in ALLOWED_LOG_LEVELS:
         raise ConfigError(f"log_level must be one of {ALLOWED_LOG_LEVELS}, got {log_level_raw!r}")
     timeout_raw = server_raw.get("http_timeout", DEFAULT_HTTP_TIMEOUT)
-    http_timeout = _coerce_float(timeout_raw, field_name="[server].http_timeout")
+    http_timeout = _coerce_positive_timeout(timeout_raw, field_name="[server].http_timeout")
 
     log_file_raw = server_raw.get("log_file")
     log_file = Path(str(log_file_raw)).expanduser() if log_file_raw else default_log_file()

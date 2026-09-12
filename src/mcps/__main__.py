@@ -97,8 +97,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     logger = configure_logging(config.log_file, config.log_level)
+    try:
+        server = build_server(config)
+    except ConfigError as exc:
+        sys.stderr.write(f"mcps: configuration error: {exc}\n")
+        return 2
     logger.info("server_started version=%s log_file=%s", "0.1.0", str(config.log_file))
-    server = build_server(config)
     server.run(transport="stdio")
     return 0
 
