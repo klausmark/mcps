@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from mcps.errors import ToolError
 from mcps.logging_setup import (
     ALLOWED_LEVELS,
     ResilientFileHandler,
@@ -88,14 +89,15 @@ def test_log_call_logs_duration_and_error(tmp_path: Path) -> None:
     def boom() -> None:
         raise RuntimeError("kaboom")
 
-    with pytest.raises(RuntimeError, match="kaboom"):
+    with pytest.raises(ToolError, match="Tool call failed"):
         boom()
     for handler in get_logger_handlers():
         handler.flush()
     content = log_path.read_text()
     assert "boom" in content
     assert "ok=false" in content
-    assert "kaboom" in content
+    assert "RuntimeError" in content
+    assert "kaboom" not in content
 
 
 def test_log_call_records_ok_true_on_success(tmp_path: Path) -> None:

@@ -12,6 +12,7 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from mcps.config import ConfigError, SectionConfig
+from mcps.errors import ToolError
 from mcps.http_client import make_client, sanitize, warn_if_tls_disabled
 from mcps.logging_setup import log_call
 
@@ -26,7 +27,7 @@ QueryValue = str | int | bool | list[str]
 JsonValue = dict[str, Any] | list[Any]
 
 
-class NetBoxError(RuntimeError):
+class NetBoxError(ToolError):
     """Safe error that contains no upstream response or credential details."""
 
 
@@ -110,16 +111,16 @@ def _get(
     query: Mapping[str, QueryValue] | None = None,
 ) -> JsonValue:
     safe_path = _validate_api_path(path)
-    client = make_client(section, base_url=section.data["url"], apply_auth=_apply_auth)
     try:
-        with client.stream("GET", safe_path, params=query) as response:
+        with (
+            make_client(section, base_url=section.data["url"], apply_auth=_apply_auth) as client,
+            client.stream("GET", safe_path, params=query) as response,
+        ):
             body = _read_response_body(response)
     except NetBoxError:
         raise
     except (httpx.HTTPError, ValueError):
         raise NetBoxError("NetBox request failed") from None
-    finally:
-        client.close()
 
     data = _parse_json_object_or_array(body)
     return sanitize(data, section.credential_values())

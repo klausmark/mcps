@@ -13,6 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
+from mcps.errors import ToolError
+
 LOGGER_NAME = "mcps"
 
 ALLOWED_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -181,13 +183,16 @@ def log_call(tool_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
             except Exception as exc:
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.error(
-                    "tool %s ok=false duration_ms=%d error=%r",
+                    "tool %s ok=false duration_ms=%d error_type=%s",
                     tool_name,
                     duration_ms,
-                    exc,
+                    type(exc).__name__,
                     extra={"category": "tool"},
                 )
-                raise
+                if isinstance(exc, ToolError):
+                    raise
+                # Unexpected exceptions can include credentials in their messages.
+                raise ToolError("Tool call failed") from None
             else:
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(

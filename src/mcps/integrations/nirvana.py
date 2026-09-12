@@ -9,7 +9,7 @@ import httpx
 from mcp.server import MCPServer
 
 from mcps.config import SectionConfig
-from mcps.http_client import make_client, sanitize, warn_if_tls_disabled
+from mcps.http_client import request_json, warn_if_tls_disabled
 from mcps.logging_setup import log_call
 
 NAME = "nirvana"
@@ -23,16 +23,7 @@ def _apply_auth(client: httpx.Client, data: Mapping[str, str]) -> None:
 
 
 def _call(section: SectionConfig, method: str, path: str, **kwargs) -> object:
-    client = make_client(section, base_url=section.data["url"], apply_auth=_apply_auth)
-    try:
-        response = client.request(method, path, **kwargs)
-        response.raise_for_status()
-        if not response.content:
-            return None
-        data = response.json()
-        return sanitize(data, section.credential_values())
-    finally:
-        client.close()
+    return request_json(section, method, path, apply_auth=_apply_auth, **kwargs)
 
 
 def register(server: MCPServer, section: SectionConfig) -> None:
