@@ -277,3 +277,15 @@ def test_override_on_non_table_section_is_rejected(tmp_config_path: Path) -> Non
             env={"MCPS_SERVER_LOG_LEVEL": "INFO"},
             cli_overrides={},
         )
+
+
+def test_section_name_with_trailing_newline_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '["homeassistant\\n"]\nurl = "http://x"\n')
+    with pytest.raises(ConfigError, match="invalid section name"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})
+
+
+def test_key_with_trailing_newline_is_rejected(tmp_config_path: Path) -> None:
+    _write(tmp_config_path, '[homeassistant]\nurl = "http://x"\n"token\\n" = "y"\n')
+    with pytest.raises(ConfigError, match="invalid key name"):
+        load_config(path=tmp_config_path, env={}, cli_overrides={})

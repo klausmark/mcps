@@ -12,11 +12,19 @@ import httpx
 from mcps.config import SectionConfig
 from mcps.errors import ToolError
 from mcps.logging_setup import get_logger
+from mcps.redaction import sanitize
 
 AuthApplier = Callable[[httpx.Client, Mapping[str, str]], None]
 
 # Upstream responses larger than this are refused rather than truncated.
 MAX_RESPONSE_BYTES = 1024 * 1024
+
+# HTTP `Content-Length` is a run of ASCII decimal digits, nothing else.
+_CONTENT_LENGTH_RE = re.compile(r"[0-9]+")
+
+# We ask for uncompressed bodies and refuse anything else so the decoded size
+# cannot silently exceed the byte limit.
+_IDENTITY_ENCODINGS = frozenset({"", "identity"})
 
 
 def _limit_label(max_bytes: int) -> str:
@@ -28,29 +36,32 @@ def read_bounded_body(
 ) -> bytes:
     """Stream a response body, refusing redirects, errors, and oversized payloads.
 
-    `Content-Length` is checked first for an early rejection, but the actual
-    decoded bytes are counted while streaming, so a missing or misleading length
-    still cannot exceed the limit.
+    `Content-Length` is checked first for an early rejection, and each raw chunk
+    is checked against the remaining capacity before it is copied, so the
+    accumulator never grows beyond the limit. Compressed bodies are refused
+    because their decoded size cannot be bounded cheaply.
     """
     if response.is_redirect:
         raise ToolError(f"{label} returned a redirect, which was refused")
     if response.is_error:
         raise ToolError(f"{label} returned HTTP {response.status_code}")
 
+    encoding = response.headers.get("Content-Encoding", "").strip().lower()
+    if encoding not in _IDENTITY_ENCODINGS:
+        raise ToolError(f"{label} returned an unsupported Content-Encoding")
+
     content_length = response.headers.get("Content-Length")
     if content_length is not None:
-        try:
-            declared = int(content_length)
-        except ValueError:
-            raise ToolError(f"{label} returned an invalid Content-Length") from None
-        if declared > max_bytes:
+        if not _CONTENT_LENGTH_RE.fullmatch(content_length):
+            raise ToolError(f"{label} returned an invalid Content-Length")
+        if int(content_length) > max_bytes:
             raise ToolError(f"{label} response exceeds the {_limit_label(max_bytes)} limit")
 
     body = bytearray()
     for chunk in response.iter_bytes():
-        body.extend(chunk)
-        if len(body) > max_bytes:
+        if len(body) + len(chunk) > max_bytes:
             raise ToolError(f"{label} response exceeds the {_limit_label(max_bytes)} limit")
+        body.extend(chunk)
     return bytes(body)
 
 
@@ -68,6 +79,7 @@ def make_client(
     kwargs: dict[str, Any] = {
         "verify": section.verify_tls,
         "timeout": section.http_timeout,
+        "headers": {"Accept-Encoding": "identity"},
     }
     if base_url is not None:
         kwargs["base_url"] = base_url
@@ -107,35 +119,6 @@ def request_json(
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ToolError(f"{section.name} returned invalid JSON") from None
     return sanitize(data, section.credential_values())
-
-
-def sanitize(data: Any, credentials: list[str]) -> Any:
-    """Recursively replace any occurrence of a credential string with `<redacted>`.
-
-    Defense in depth: even if an upstream server echoes a token in its JSON
-    body, the model never sees the value.
-    """
-    values = sorted({value for value in credentials if value}, key=len, reverse=True)
-    if not values:
-        return data
-    # Match once, longest first: overlapping credentials must not reveal suffixes
-    # or cause a later replacement to modify an earlier redaction marker.
-    pattern = re.compile("|".join(re.escape(value) for value in values))
-
-    def redact(value: Any) -> Any:
-        if isinstance(value, dict):
-            return {redact(key): redact(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [redact(item) for item in value]
-        if isinstance(value, tuple):
-            return tuple(redact(item) for item in value)
-        if isinstance(value, str):
-            return pattern.sub("<redacted>", value)
-        if isinstance(value, (int, float)) and pattern.search(str(value)):
-            return "<redacted>"
-        return value
-
-    return redact(data)
 
 
 def warn_if_tls_disabled(section: SectionConfig) -> None:

@@ -59,6 +59,9 @@ def test_empty_required_values_are_rejected(
         "https://user:pass@example.com",
         "https://example.com?x=1",
         "https://example.com#frag",
+        "https://example.com/proxy",
+        "https://example.com/proxy/",
+        "https://example.com/api",
     ],
 )
 def test_invalid_urls_are_rejected(tmp_log_file: Path, url: str) -> None:
@@ -69,6 +72,20 @@ def test_invalid_urls_are_rejected(tmp_log_file: Path, url: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["https://example.com", "https://example.com/", "http://localhost:8123"],
+)
+def test_origin_url_is_accepted(tmp_log_file: Path, url: str) -> None:
+    assert (
+        _build(
+            tmp_log_file,
+            {"homeassistant": _section("homeassistant", {"url": url, "token": "y"})},
+        )
+        is not None
+    )
+
+
 def test_local_http_url_is_accepted(tmp_log_file: Path) -> None:
     assert (
         _build(
@@ -77,6 +94,36 @@ def test_local_http_url_is_accepted(tmp_log_file: Path) -> None:
         )
         is not None
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("homeassistant", {"url": "https://example.com/proxy", "token": "y"}),
+        ("mealie", {"url": "https://example.com/proxy", "api_key": "y"}),
+        ("nirvana", {"url": "https://example.com/proxy", "email": "u@x", "password": "y"}),
+        ("netbox", {"url": "https://example.com/proxy", "token": "y"}),
+    ],
+)
+def test_url_path_prefix_is_rejected_for_every_integration(
+    tmp_log_file: Path, name: str, data: dict[str, str]
+) -> None:
+    with pytest.raises(ConfigError, match="url"):
+        _build(tmp_log_file, {name: _section(name, data)})
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("homeassistant", {"url": "http://x", "token": "y", "http_timout": "5"}),
+        ("mealie", {"url": "http://x", "api_key": "y", "api_keey": "z"}),
+    ],
+)
+def test_unknown_settings_are_rejected(
+    tmp_log_file: Path, name: str, data: dict[str, str]
+) -> None:
+    with pytest.raises(ConfigError, match="unknown setting"):
+        _build(tmp_log_file, {name: _section(name, data)})
 
 
 @pytest.mark.parametrize("token", ["bad\ntoken", "bad\rtoken"])

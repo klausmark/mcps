@@ -32,7 +32,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         name="homeassistant_list_entities",
         description="List Home Assistant entity states.",
     )
-    @log_call("homeassistant_list_entities")
+    @log_call("homeassistant_list_entities", credentials=section.credential_values())
     def list_entities(domain: str | None = None) -> list[dict]:
         """List entity states, optionally filtered by domain (e.g. `light`, `switch`)."""
         entities = expect_list(_call(section, "GET", "/api/states"), label="Home Assistant")
@@ -49,7 +49,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         name="homeassistant_get_state",
         description="Get a single entity state by id.",
     )
-    @log_call("homeassistant_get_state")
+    @log_call("homeassistant_get_state", credentials=section.credential_values())
     def get_state(entity_id: str) -> dict:
         """Get the state of one entity, e.g. `light.kitchen`."""
         validate_path_parameter(entity_id, "entity_id", pattern=r"[a-z0-9_]+\.[a-z0-9_]+")
@@ -60,7 +60,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         name="homeassistant_call_service",
         description="Call a Home Assistant service.",
     )
-    @log_call("homeassistant_call_service")
+    @log_call("homeassistant_call_service", credentials=section.credential_values())
     def call_service(domain: str, service: str, data: dict | None = None) -> list[dict]:
         """Call `domain.service` with optional service data; returns the affected states."""
         validate_path_parameter(domain, "domain", pattern=r"[a-z0-9_]+")

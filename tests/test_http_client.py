@@ -45,6 +45,20 @@ def test_sanitize_numeric_credentials_in_json_numbers() -> None:
     assert sanitize({"code": 123456}, ["123456"]) == {"code": "<redacted>"}
 
 
+def test_sanitize_boolean_and_null_credentials() -> None:
+    data = {"yes": True, "no": False, "nothing": None}
+    assert sanitize(data, ["true", "false", "null"]) == {
+        "yes": "<redacted>",
+        "no": "<redacted>",
+        "nothing": "<redacted>",
+    }
+
+
+def test_sanitize_marker_cannot_reintroduce_credential() -> None:
+    result = sanitize("redacted", ["redacted"])
+    assert "redacted" not in result
+
+
 def test_make_client_sets_verify_false() -> None:
     section = SectionConfig(name="x", data={"url": "http://x"}, http_timeout=1.0, verify_tls=False)
     seen: dict[str, Any] = {}
@@ -87,5 +101,14 @@ def test_make_client_without_apply_auth() -> None:
     client = make_client(section)
     try:
         assert "Authorization" not in client.headers
+    finally:
+        client.close()
+
+
+def test_make_client_requests_identity_encoding() -> None:
+    section = SectionConfig(name="x", data={"url": "http://x"}, http_timeout=2.0, verify_tls=True)
+    client = make_client(section)
+    try:
+        assert client.headers["Accept-Encoding"] == "identity"
     finally:
         client.close()

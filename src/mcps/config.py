@@ -40,7 +40,7 @@ NON_CREDENTIAL_KEYS = frozenset({"url", "verify_tls", "http_timeout", "log_file"
 SERVER_KEYS = frozenset({"log_file", "log_level", "http_timeout"})
 
 # Validation: section names and key names are snake_case identifiers.
-IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+IDENTIFIER_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 ENV_KEY_PREFIX = "MCPS_"
 
@@ -136,7 +136,7 @@ def _read_toml(path: Path) -> dict:
 
 
 def _validate_identifier(kind: str, value: str) -> None:
-    if not IDENTIFIER_RE.match(value):
+    if not IDENTIFIER_RE.fullmatch(value):
         raise ConfigError(f"invalid {kind} name: {value!r} (must be snake_case)")
 
 
@@ -210,7 +210,7 @@ def _parse_section(
     for key, value in raw.items():
         if key in ("http_timeout", "verify_tls"):
             continue
-        if not IDENTIFIER_RE.match(key):
+        if not IDENTIFIER_RE.fullmatch(key):
             raise ConfigError(f"section [{name}]: invalid key name {key!r} (must be snake_case)")
         if not isinstance(value, (str, int, float, bool)):
             raise ConfigError(

@@ -24,7 +24,8 @@ src/mcps/
   server.py            # MCPServer + register_all()
   config.py            # file/env/CLI merging + validation
   logging_setup.py     # flat-text logger + log_call decorator
-  http_client.py       # per-integration httpx.Client + bounded reader + sanitize()
+  http_client.py       # per-integration httpx.Client + bounded reader
+  redaction.py         # credential redaction for responses, logs, and errors
   errors.py            # ToolError: public, credential-free tool failures
   responses.py         # response-shape validation (expect_dict/list/items)
   validation.py        # URL path-parameter validation
@@ -77,7 +78,8 @@ docs/
   - every parsed response passes through `sanitize()` against all configured
     credentials, including NirvanaHQ's encoded Basic-auth token
   - tool errors carry a safe `ToolError` message, never the upstream or
-    exception text (which may echo headers)
+    exception text (which may echo headers); the message is also redacted
+    against every configured credential
   - `log_call` records only the exception type, never its message
   - a test asserts no tool result matches any credential from config
 - Log redaction: parameter names matching `token|password|api_key|secret|

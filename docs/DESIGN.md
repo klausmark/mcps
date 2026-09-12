@@ -26,11 +26,17 @@ never sees a credential value.
 - **Safe tool errors**: integrations raise `ToolError` with a fixed,
   credential-free message. `log_call` records only the exception type, and an
   unexpected exception is converted to a generic `ToolError`, so upstream
-  headers or exception text can never reach the model or the log.
+  headers or exception text can never reach the model or the log. The complete
+  configured credential set is also applied to public error messages, since a
+  low-entropy credential could otherwise match generated text.
 - **Bounded responses**: bodies are read through a shared streaming reader
-  capped at 1 MiB (declared `Content-Length` plus actual decoded bytes).
-  Oversized responses fail instead of being truncated, and the response and
-  client are always closed.
+  capped at 1 MiB. Uncompressed bodies are requested (`Accept-Encoding:
+  identity`) and any other `Content-Encoding` is refused, so the decoded size
+  cannot silently exceed the limit; declared `Content-Length` values are
+  validated strictly. Each chunk is checked against the remaining capacity
+  before it is copied, so the accumulator never grows beyond 1 MiB. Oversized
+  responses fail instead of being truncated, and the response and client are
+  always closed.
 - **Startup validation**: before the server starts, unknown sections,
   non-snake_case keys, empty required values, invalid URLs, and
   non-positive/non-finite timeouts are rejected with `ConfigError`. The CLI

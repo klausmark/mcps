@@ -47,12 +47,18 @@ def register_all(server: MCPServer, config: ServerConfig) -> None:
 def _validate_section(
     section_name: str, required: Iterable[str], section: SectionConfig
 ) -> None:
-    missing = [key for key in required if key not in section.data]
+    required_keys = tuple(required)
+    missing = [key for key in required_keys if key not in section.data]
     if missing:
         raise ConfigError(
             f"section [{section_name}] is missing required keys: {', '.join(missing)}"
         )
-    for key in required:
+    unknown = sorted(set(section.data) - set(required_keys))
+    if unknown:
+        raise ConfigError(
+            f"section [{section_name}]: unknown setting(s): {', '.join(unknown)}"
+        )
+    for key in required_keys:
         value = section.data[key]
         if not value.strip():
             raise ConfigError(f"section [{section_name}] key {key!r} must not be empty")
@@ -73,10 +79,11 @@ def _validate_url(section_name: str, value: str) -> None:
         url.scheme not in ("http", "https")
         or not url.host
         or url.userinfo
+        or url.path not in ("", "/")
         or url.query
         or url.fragment
     ):
         raise ConfigError(
-            f"section [{section_name}] url must be an HTTP(S) URL without "
-            "credentials, query, or fragment"
+            f"section [{section_name}] url must be an HTTP(S) origin without "
+            "credentials, path prefix, query, or fragment"
         )

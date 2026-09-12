@@ -120,7 +120,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         description="Perform a read-only GET request against the configured NetBox REST API.",
         annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True),
     )
-    @log_call("netbox_get")
+    @log_call("netbox_get", credentials=section.credential_values())
     def netbox_get(path: str, query: dict[str, QueryValue] | None = None) -> JsonValue:
         """Read an unescaped NetBox REST API path beginning with `/api/`."""
         return _get(section, path, query)

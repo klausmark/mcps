@@ -81,6 +81,14 @@ def test_declared_too_large_is_rejected_before_reading() -> None:
     assert stream.yielded == 0
 
 
+def test_single_oversized_chunk_is_rejected_before_copying() -> None:
+    response, stream = _response([b"a" * (MAX_RESPONSE_BYTES + 1)])
+    with pytest.raises(ToolError, match="1 MiB"):
+        read_bounded_body(response, label="x")
+    assert stream is not None
+    assert stream.yielded == 1
+
+
 def test_misleading_small_content_length_is_still_enforced() -> None:
     response, _ = _response(
         [b"a" * MAX_RESPONSE_BYTES, b"b"], headers={"Content-Length": "1"}
@@ -89,20 +97,33 @@ def test_misleading_small_content_length_is_still_enforced() -> None:
         read_bounded_body(response, label="x")
 
 
-def test_invalid_content_length_is_a_safe_error() -> None:
-    response, _ = _response([b"a"], headers={"Content-Length": "not-a-number"})
-    with pytest.raises(ToolError, match="invalid Content-Length"):
-        read_bounded_body(response, label="x")
+def test_valid_content_length_is_accepted() -> None:
+    response, _ = _response([b"abc"], headers={"Content-Length": "3"})
+    assert read_bounded_body(response, label="x") == b"abc"
 
 
-def test_decoded_gzip_size_is_enforced() -> None:
-    plain = b"a" * (MAX_RESPONSE_BYTES + 1)
-    compressed = gzip.compress(plain)
+def test_identity_content_encoding_is_accepted() -> None:
+    response, _ = _response([b"abc"], headers={"Content-Encoding": "identity"})
+    assert read_bounded_body(response, label="x") == b"abc"
+
+
+def test_compressed_body_is_refused() -> None:
+    compressed = gzip.compress(b"a" * (MAX_RESPONSE_BYTES + 1))
     response, _ = _response(
         content=compressed,
         headers={"Content-Encoding": "gzip", "Content-Length": str(len(compressed))},
     )
-    with pytest.raises(ToolError, match="1 MiB"):
+    with pytest.raises(ToolError, match="Content-Encoding"):
+        read_bounded_body(response, label="x")
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["not-a-number", "-1", "+10", " 10", "10 ", "", "0x10", "1.5"],
+)
+def test_malformed_content_length_is_rejected(value: str) -> None:
+    response, _ = _response([b"a"], headers={"Content-Length": value})
+    with pytest.raises(ToolError, match="invalid Content-Length"):
         read_bounded_body(response, label="x")
 
 

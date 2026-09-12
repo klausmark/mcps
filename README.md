@@ -117,8 +117,10 @@ required read-only object permissions. Generic API responses can contain sensiti
 custom fields or plugin data that `mcps` cannot identify automatically.
 
 Upstream response bodies are capped at 1 MiB; a larger response fails instead of
-being truncated. Tool results never contain a configured credential: every parsed
-response is redacted, and upstream errors are replaced with a safe message.
+being truncated. Compressed responses are refused so the decoded size stays
+bounded. Tool results never contain a configured credential: every parsed
+response is redacted, and upstream errors are replaced with a safe message that
+is itself checked against the configured credentials.
 
 ## Logs
 

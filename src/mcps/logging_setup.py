@@ -9,13 +9,16 @@ import os
 import re
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
 from mcps.errors import ToolError
+from mcps.redaction import redact_text
 
 LOGGER_NAME = "mcps"
+
+GENERIC_TOOL_ERROR = "Tool call failed"
 
 ALLOWED_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 DEFAULT_LEVEL = "INFO"
@@ -161,8 +164,16 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def log_call(tool_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator that logs every invocation: args (redacted), duration, success/failure."""
+def log_call(
+    tool_name: str, *, credentials: Iterable[str] = ()
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator that logs every invocation: args (redacted), duration, success/failure.
+
+    `credentials` is the complete credential set of the running server; it is
+    applied to public error messages so a low-entropy credential that happens to
+    match generated error text cannot reach the model.
+    """
+    redaction_values = tuple(credentials)
 
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         params = tuple(inspect.signature(fn).parameters.keys())
@@ -190,9 +201,10 @@ def log_call(tool_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
                     extra={"category": "tool"},
                 )
                 if isinstance(exc, ToolError):
+                    # Generated messages can contain a low-entropy credential.
+                    exc.args = (redact_text(str(exc), redaction_values),)
                     raise
-                # Unexpected exceptions can include credentials in their messages.
-                raise ToolError("Tool call failed") from None
+                raise ToolError(redact_text(GENERIC_TOOL_ERROR, redaction_values)) from None
             else:
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(

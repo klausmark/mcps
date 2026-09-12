@@ -40,7 +40,7 @@ def register(server: MCPServer, section: SectionConfig) -> None:
     warn_if_tls_disabled(section)
 
     @server.tool(name="mealie_list_recipes", description="List Mealie recipes.")
-    @log_call("mealie_list_recipes")
+    @log_call("mealie_list_recipes", credentials=section.credential_values())
     def list_recipes(limit: int = DEFAULT_RECIPE_LIMIT, page: int = 1) -> list[dict]:
         """List one page of recipes, capped at `limit` entries (max 100)."""
         _validate_pagination(limit, page)
@@ -48,14 +48,14 @@ def register(server: MCPServer, section: SectionConfig) -> None:
         return expect_items(data, label="Mealie")[:limit]
 
     @server.tool(name="mealie_get_recipe", description="Get one Mealie recipe by slug.")
-    @log_call("mealie_get_recipe")
+    @log_call("mealie_get_recipe", credentials=section.credential_values())
     def get_recipe(slug: str) -> dict:
         """Fetch a recipe by slug (e.g. `chicken-tikka-masala`)."""
         validate_path_parameter(slug, "slug")
         return expect_dict(_call(section, "GET", f"/api/recipes/{slug}"), label="Mealie")
 
     @server.tool(name="mealie_search_recipes", description="Search Mealie recipes by query.")
-    @log_call("mealie_search_recipes")
+    @log_call("mealie_search_recipes", credentials=section.credential_values())
     def search_recipes(
         query: str, limit: int = DEFAULT_RECIPE_LIMIT, page: int = 1
     ) -> list[dict]:
