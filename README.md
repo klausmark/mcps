@@ -13,6 +13,12 @@ appear in tool results.
 uv sync
 ```
 
+For development (tests and lint):
+
+```sh
+uv sync --extra dev
+```
+
 ## Configure
 
 Create the default config and log directory:
@@ -102,10 +108,17 @@ To run as a different user:
 - `netbox_get` - read an unescaped REST API path below `/api/` with optional query parameters
 - `nirvana_list_tasks`, `nirvana_get_task`, `nirvana_complete_task`, `nirvana_add_task`
 
+`mealie_list_recipes` and `mealie_search_recipes` return one page at a time and
+accept `limit` (default 20, maximum 100) and `page` (default 1).
+
 `netbox_get` only sends GET requests, refuses redirects, and blocks the NetBox token
 administration endpoint. Use a NetBox token belonging to a user with the minimum
 required read-only object permissions. Generic API responses can contain sensitive
 custom fields or plugin data that `mcps` cannot identify automatically.
+
+Upstream response bodies are capped at 1 MiB; a larger response fails instead of
+being truncated. Tool results never contain a configured credential: every parsed
+response is redacted, and upstream errors are replaced with a safe message.
 
 ## Logs
 

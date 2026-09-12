@@ -19,10 +19,28 @@ never sees a credential value.
   flow yet — out of scope for v1).
 - **TLS**: `verify_tls` per integration, default `true`. `false` emits a
   startup DEBUG log line (not WARNING — see "Known limitations" below).
-- **Secret isolation**: parsed responses pass through `sanitize()` which
-  recursively replaces any occurrence of a credential string with
-  `<redacted>`. A test enumerates tools and asserts no result matches any
-  config credential string.
+- **Secret isolation**: parsed responses pass through `sanitize()`, which
+  removes every configured credential value, including NirvanaHQ's encoded
+  Basic-auth token, from strings, keys, and JSON numbers. A test enumerates
+  every tool and asserts no result matches any config credential string.
+- **Safe tool errors**: integrations raise `ToolError` with a fixed,
+  credential-free message. `log_call` records only the exception type, and an
+  unexpected exception is converted to a generic `ToolError`, so upstream
+  headers or exception text can never reach the model or the log.
+- **Bounded responses**: bodies are read through a shared streaming reader
+  capped at 1 MiB (declared `Content-Length` plus actual decoded bytes).
+  Oversized responses fail instead of being truncated, and the response and
+  client are always closed.
+- **Startup validation**: before the server starts, unknown sections,
+  non-snake_case keys, empty required values, invalid URLs, and
+  non-positive/non-finite timeouts are rejected with `ConfigError`. The CLI
+  reports these errors on stderr with exit code 2 and no traceback.
+- **Path-parameter validation**: model-supplied values placed in URL paths
+  (entity ids, slugs, task ids, domains, services) are validated as single
+  identifiers, so they cannot inject path traversal or query separators.
+- **Response shapes**: expected list/dict shapes are asserted (with `items`
+  envelopes accepted where the API uses them); an unexpected shape raises a
+  safe `ToolError` instead of silently returning an empty result.
 - **Config**: TOML file + `MCPS_*` env vars + CLI flags
   (precedence: file < env < CLI). The default is `~/.mcps/config.toml`.
   On POSIX, the file is corrected to mode `0600` before it is read and must
@@ -36,6 +54,8 @@ never sees a credential value.
   are logged as `<redacted>`.
 - **Tools**: one per logical action per integration, except NetBox's intentionally
   generic read-only API tool. No `secret_*` and no `log_event` tools - by intent.
+  Mealie recipe listings are paginated: `limit` (default 20, max 100) and `page`
+  (default 1), enforced locally as well as forwarded upstream.
 
 ## Out of scope (v1)
 
