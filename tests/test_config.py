@@ -60,6 +60,41 @@ def test_netbox_env_overrides_and_section_settings(tmp_config_path: Path) -> Non
     assert netbox.http_timeout == 3.5
 
 
+def test_garmin_env_overrides(tmp_config_path: Path) -> None:
+    _write(
+        tmp_config_path,
+        '[garmin]\nemail = "old@example.com"\npassword = "old"\n',
+    )
+    config = load_config(
+        path=tmp_config_path,
+        env={
+            "MCPS_GARMIN_EMAIL": "new@example.com",
+            "MCPS_GARMIN_PASSWORD": "new",
+            "MCPS_GARMIN_TOKEN_STORE": "/tmp/garmin-tokens",
+        },
+        cli_overrides={},
+    )
+    garmin_section = config.sections["garmin"]
+    assert garmin_section.data == {
+        "email": "new@example.com",
+        "password": "new",
+        "token_store": "/tmp/garmin-tokens",
+    }
+
+
+def test_garmin_token_store_is_treated_as_credential(tmp_config_path: Path) -> None:
+    _write(
+        tmp_config_path,
+        '[garmin]\nemail = "u@example.com"\npassword = "p"\n'
+        'token_store = "/home/someone/.mcps/garmin"\n',
+    )
+    config = load_config(path=tmp_config_path, env={}, cli_overrides={})
+    credentials = config.sections["garmin"].credential_values()
+    assert "u@example.com" in credentials
+    assert "p" in credentials
+    assert "/home/someone/.mcps/garmin" in credentials
+
+
 def test_env_server_override(tmp_config_path: Path) -> None:
     _write(tmp_config_path, '[server]\nlog_level = "INFO"\n')
     config = load_config(

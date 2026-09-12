@@ -5,13 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "mcps"
 version = "0.1.0"
-description = "Thin stdio MCP server acting as a logging and secret-injection facade for Home Assistant, Mealie, NetBox and NirvanaHQ."
+description = "Thin stdio MCP server acting as a logging and secret-injection facade for Home Assistant, Mealie, NetBox, NirvanaHQ and Garmin Connect."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
     "mcp>=2.0,<3",
     "httpx>=0.27,<1",
+    "garminconnect==0.3.13",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ addopts = "-ra"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "PL"]

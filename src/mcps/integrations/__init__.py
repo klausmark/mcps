@@ -10,9 +10,10 @@ from mcp.server import MCPServer
 
 from mcps.config import ConfigError, SectionConfig, ServerConfig
 
-from . import homeassistant, mealie, netbox, nirvana
+from . import garmin, homeassistant, mealie, netbox, nirvana
 
 INTEGRATIONS = (
+    garmin,
     homeassistant,
     mealie,
     netbox,
@@ -29,7 +30,8 @@ def register_all(server: MCPServer, config: ServerConfig) -> None:
 
     for module in INTEGRATIONS:
         if section := config.sections.get(module.NAME):
-            _validate_section(module.NAME, module.REQUIRED_KEYS, section)
+            allowed_keys = getattr(module, "ALLOWED_KEYS", module.REQUIRED_KEYS)
+            _validate_section(module.NAME, module.REQUIRED_KEYS, section, allowed_keys=allowed_keys)
 
     credentials = [
         value for section in config.sections.values() for value in section.credential_values()
@@ -45,15 +47,20 @@ def register_all(server: MCPServer, config: ServerConfig) -> None:
 
 
 def _validate_section(
-    section_name: str, required: Iterable[str], section: SectionConfig
+    section_name: str,
+    required: Iterable[str],
+    section: SectionConfig,
+    *,
+    allowed_keys: Iterable[str] | None = None,
 ) -> None:
     required_keys = tuple(required)
+    allowed = tuple(allowed_keys) if allowed_keys is not None else required_keys
     missing = [key for key in required_keys if key not in section.data]
     if missing:
         raise ConfigError(
             f"section [{section_name}] is missing required keys: {', '.join(missing)}"
         )
-    unknown = sorted(set(section.data) - set(required_keys))
+    unknown = sorted(set(section.data) - set(allowed))
     if unknown:
         raise ConfigError(
             f"section [{section_name}]: unknown setting(s): {', '.join(unknown)}"

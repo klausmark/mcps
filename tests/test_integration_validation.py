@@ -41,6 +41,8 @@ def test_server_without_integrations_builds(tmp_log_file: Path) -> None:
         ("mealie", {"url": "http://x", "api_key": ""}),
         ("nirvana", {"url": "https://x", "email": "u@x", "password": ""}),
         ("netbox", {"url": "https://netbox.example", "token": ""}),
+        ("garmin", {"email": "", "password": "p"}),
+        ("garmin", {"email": "u@example.com", "password": " "}),
     ],
 )
 def test_empty_required_values_are_rejected(
@@ -117,6 +119,7 @@ def test_url_path_prefix_is_rejected_for_every_integration(
     [
         ("homeassistant", {"url": "http://x", "token": "y", "http_timout": "5"}),
         ("mealie", {"url": "http://x", "api_key": "y", "api_keey": "z"}),
+        ("garmin", {"email": "u@example.com", "password": "p", "token_stor": "/tmp/x"}),
     ],
 )
 def test_unknown_settings_are_rejected(
@@ -124,6 +127,25 @@ def test_unknown_settings_are_rejected(
 ) -> None:
     with pytest.raises(ConfigError, match="unknown setting"):
         _build(tmp_log_file, {name: _section(name, data)})
+
+
+def test_garmin_optional_token_store_is_accepted(
+    tmp_log_file: Path, fake_home: Path
+) -> None:
+    data = {
+        "email": "u@example.com",
+        "password": "p",
+        "token_store": str(fake_home / ".mcps" / "garmin"),
+    }
+    assert _build(tmp_log_file, {"garmin": _section("garmin", data)}) is not None
+
+
+def test_garmin_missing_required_key_is_rejected(tmp_log_file: Path) -> None:
+    with pytest.raises(ConfigError, match="missing required keys"):
+        _build(
+            tmp_log_file,
+            {"garmin": _section("garmin", {"email": "u@example.com"})},
+        )
 
 
 @pytest.mark.parametrize("token", ["bad\ntoken", "bad\rtoken"])

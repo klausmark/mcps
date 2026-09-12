@@ -48,7 +48,8 @@ async def test_absent_sections_produce_no_tools(tmp_log_file: Path) -> None:
     server = _build(config)
     names = await _list_tool_names(server)
     assert not any(
-        name.startswith(("homeassistant_", "mealie_", "netbox_", "nirvana_")) for name in names
+        name.startswith(("garmin_", "homeassistant_", "mealie_", "netbox_", "nirvana_"))
+        for name in names
     )
 
 
@@ -105,7 +106,19 @@ async def test_tool_result_never_contains_credential_value(
     assert "<redacted>" in text
 
 
-async def test_all_integrations_register_when_all_sections_present(tmp_log_file: Path) -> None:
+async def test_all_integrations_register_when_all_sections_present(
+    tmp_log_file: Path, fake_home: Path
+) -> None:
+    ga = SectionConfig(
+        name="garmin",
+        data={
+            "email": "u@example.com",
+            "password": "p",
+            "token_store": str(fake_home / ".mcps" / "garmin"),
+        },
+        http_timeout=5.0,
+        verify_tls=True,
+    )
     ha = SectionConfig(
         name="homeassistant",
         data={"url": "http://ha", "token": "t"},
@@ -134,11 +147,24 @@ async def test_all_integrations_register_when_all_sections_present(tmp_log_file:
         log_file=tmp_log_file,
         log_level="WARNING",
         http_timeout=5.0,
-        sections={"homeassistant": ha, "mealie": me, "netbox": ne, "nirvana": ni},
+        sections={
+            "garmin": ga,
+            "homeassistant": ha,
+            "mealie": me,
+            "netbox": ne,
+            "nirvana": ni,
+        },
     )
     server = _build(config)
     names = await _list_tool_names(server)
     expected = {
+        "garmin_get_daily_summary",
+        "garmin_get_sleep",
+        "garmin_get_heart_rate",
+        "garmin_get_stress",
+        "garmin_get_body_battery",
+        "garmin_list_activities",
+        "garmin_get_activity",
         "homeassistant_list_entities",
         "homeassistant_get_state",
         "homeassistant_call_service",

@@ -7,6 +7,8 @@ The server runs on demand, launched by an MCP host (OpenCode, Hermes Agent,
 Codex, etc.). Credentials are read from a local config file and never
 appear in tool results.
 
+Requires Python 3.12 or newer (the Garmin Connect SDK requires 3.12).
+
 ## Install
 
 ```sh
@@ -57,10 +59,16 @@ token = "..."
 url = "https://api.nirvanahq.com"
 email = "..."
 password = "..."
+
+[garmin]
+email = "user@example.com"
+password = "..."
+token_store = "~/.mcps/garmin"
 ```
 
 Override individual values via `MCPS_*` environment variables or CLI flags.
-Precedence (low to high): file < env < CLI.
+Precedence (low to high): file < env < CLI. For Garmin, the overrides are
+`MCPS_GARMIN_EMAIL`, `MCPS_GARMIN_PASSWORD`, and `MCPS_GARMIN_TOKEN_STORE`.
 
 The config path can be overridden with `MCPS_CONFIG_PATH` or `--config`.
 The log path can be overridden with `MCPS_SERVER_LOG_FILE` or `--log-file`.
@@ -107,6 +115,9 @@ To run as a different user:
 - `mealie_list_recipes`, `mealie_get_recipe`, `mealie_search_recipes`
 - `netbox_get` - read an unescaped REST API path below `/api/` with optional query parameters
 - `nirvana_list_tasks`, `nirvana_get_task`, `nirvana_complete_task`, `nirvana_add_task`
+- `garmin_get_daily_summary`, `garmin_get_sleep`, `garmin_get_heart_rate`,
+  `garmin_get_stress`, `garmin_get_body_battery`, `garmin_list_activities`,
+  `garmin_get_activity`
 
 `mealie_list_recipes` and `mealie_search_recipes` return one page at a time and
 accept `limit` (default 20, maximum 100) and `page` (default 1).
@@ -122,6 +133,34 @@ bounded. Tool results never contain a configured credential: every parsed
 response is redacted, and upstream errors are replaced with a safe message that
 is itself checked against the configured credentials.
 
+## Garmin Connect
+
+Garmin Connect has no public consumer API. This integration uses the unofficial
+`garminconnect` SDK for Garmin's mobile SSO flow, and Garmin can change or block
+those endpoints without notice. It only reads health and activity data; it never
+writes to the account. The data (sleep, heart rate, stress, activities) is
+sensitive, and the cached tokens grant persistent account access until revoked
+in Garmin's account security settings.
+
+Authenticate once before using the tools:
+
+```sh
+uv run mcps --config ~/.mcps/config.toml garmin-login
+```
+
+If Garmin requires MFA, the command prompts for the one-time code on the
+terminal. Tokens are stored in `token_store` (default `~/.mcps/garmin`) with
+mode `0700` for the directory and `0600` for `garmin_tokens.json`; `mcps`
+refuses to start if the path is a symlink or owned by another user. The MCP
+server never prompts for MFA, so re-run `garmin-login` if authentication fails.
+
+The Garmin SDK manages its own HTTP layer, so `http_timeout` and
+`verify_tls=false` do not apply: TLS verification is always required. Dates are
+`YYYY-MM-DD`; `garmin_get_body_battery` accepts at most 31 days per call, and
+`garmin_list_activities` returns at most 100 activities per call. Garmin calls
+are serialized, and generated OAuth tokens and cookies are redacted from tool
+results alongside the configured credentials.
+
 ## Logs
 
 Flat-text log at `[server].log_file` (default
@@ -132,3 +171,7 @@ Flat-text log at `[server].log_file` (default
 - "config file not found" — set `--config` or `MCPS_CONFIG_PATH`.
 - "could not be changed to 600" — ensure the current user can change the config file.
 - "missing required keys" — your `[section]` lacks `url` or credentials.
+- Garmin "authentication failed; run `mcps garmin-login`" — the cached tokens
+  expired or were revoked; re-run `mcps garmin-login`.
+- Garmin "token store could not be secured" — fix ownership/mode of
+  `token_store` (or remove a symlinked path) and retry.

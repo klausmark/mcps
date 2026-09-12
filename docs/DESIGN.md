@@ -16,7 +16,21 @@ never sees a credential value.
 - **Auth model**: each integration exports `REQUIRED_KEYS` and an internal
   `apply_auth` callable. Three cases: none (open API — no required keys),
   static (token/api_key/basic), OAuth (stubbed: required keys present but no
-  flow yet — out of scope for v1).
+  flow yet — out of scope for v1, except Garmin, see below). Integrations may
+  export `ALLOWED_KEYS` when they have optional settings beyond
+  `REQUIRED_KEYS`.
+- **Garmin Connect auth**: Garmin has no public API, so the unofficial
+  `garminconnect` SDK (pinned exactly) handles mobile SSO, MFA, and DI OAuth
+  token refresh. This is the one sanctioned exception to the `httpx`-only
+  rule; `mcps` code still never imports `requests` directly. Authentication is
+  lazy (first tool call), runs under one lock, and never prompts on stdin:
+  MFA requires an interactive `mcps garmin-login` bootstrap. Tokens live in
+  `~/.mcps/garmin/garmin_tokens.json`; the directory is enforced as `0700`,
+  the file as `0600`, and symlinks or foreign ownership abort startup or the
+  call. Generated OAuth tokens and cookies are extracted from the SDK state
+  and redacted from results, and SDK loggers are pinned to CRITICAL with
+  propagation disabled so upstream bodies cannot enter `mcps` logs.
+  `verify_tls=false` is rejected because the SDK cannot disable verification.
 - **TLS**: `verify_tls` per integration, default `true`. `false` emits a
   startup DEBUG log line (not WARNING — see "Known limitations" below).
 - **Secret isolation**: parsed responses pass through `sanitize()`, which
@@ -66,7 +80,7 @@ never sees a credential value.
 ## Out of scope (v1)
 
 - SSH and email integrations (later: SSH uses `StrictHostKeyChecking=accept-new`).
-- OAuth flows (only stubbed).
+- OAuth flows (only stubbed; Garmin's flow is delegated to the Garmin SDK).
 - TCP / Streamable HTTP transport.
 - Encryption of the config file.
 - JSON logging, log rotation (systemd/logrotate handles it).
@@ -78,6 +92,8 @@ never sees a credential value.
 - Mealie: `list_recipes`, `get_recipe`, `search_recipes`
 - NetBox: `get` (GET-only access below `/api/`, with token administration blocked)
 - Nirvana: `list_tasks`, `get_task`, `complete_task`, `add_task`
+- Garmin: `get_daily_summary`, `get_sleep`, `get_heart_rate`, `get_stress`,
+  `get_body_battery`, `list_activities`, `get_activity`
 
 ## Known limitations
 
@@ -96,3 +112,12 @@ never sees a credential value.
   startup and is visible by raising the log level to DEBUG. This is by
   intent: a stdio MCP server is typically spawned per host connection, so a
   per-process warning was perceived as log spam.
+- **Garmin responses are bounded after parsing, not while streaming.** The
+  Garmin SDK buffers and decodes each body before `mcps` sees it, so the
+  shared 1 MiB streaming reader does not apply. `mcps` rejects any parsed
+  result whose compact JSON exceeds 1 MiB, and bounds the date range and
+  activity count at the tool boundary, but an oversized Garmin body is still
+  buffered in process memory before it is rejected. This is accepted because
+  the installed SDK exposes no streaming hook.
+- **Garmin `http_timeout` is not honored.** The SDK uses fixed per-request
+  timeouts; `mcps` cannot override them through the public API.

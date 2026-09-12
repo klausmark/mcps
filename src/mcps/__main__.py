@@ -9,11 +9,14 @@ from pathlib import Path
 
 from mcps.config import (
     ConfigError,
+    ServerConfig,
     default_log_file,
     init_config,
     init_default_path,
     load_config,
 )
+from mcps.errors import ToolError
+from mcps.integrations import garmin
 from mcps.logging_setup import configure_logging
 from mcps.server import build_server
 
@@ -21,7 +24,8 @@ from mcps.server import build_server
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcps",
-        description="Thin stdio MCP server for Home Assistant, Mealie, NetBox and NirvanaHQ.",
+        description="Thin stdio MCP server for Home Assistant, Mealie, NetBox, "
+        "NirvanaHQ and Garmin Connect.",
     )
     parser.add_argument(
         "--config",
@@ -46,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Overwrite an existing config file.",
+    )
+    sub.add_parser(
+        "garmin-login",
+        help="Authenticate with Garmin Connect and store tokens securely.",
     )
 
     return parser
@@ -81,6 +89,22 @@ def _run_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_garmin_login(config: ServerConfig) -> int:
+    section = config.sections.get(garmin.NAME)
+    if section is None:
+        sys.stderr.write("mcps: configuration error: no [garmin] section configured\n")
+        return 2
+    try:
+        garmin.login_interactively(section)
+    except (ConfigError, ToolError) as exc:
+        sys.stderr.write(f"mcps: {exc}\n")
+        return 2
+    sys.stderr.write(
+        "mcps: Garmin authentication completed and tokens were stored securely.\n"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.command == "init":
@@ -95,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         sys.stderr.write(f"mcps: configuration error: {exc}\n")
         return 2
+
+    if args.command == "garmin-login":
+        return _run_garmin_login(config)
 
     logger = configure_logging(config.log_file, config.log_level)
     try:

@@ -306,6 +306,12 @@ http_timeout = 10.0
 # email = "..."
 # password = "..."
 # verify_tls = true
+
+# [garmin]
+# email = "user@example.com"
+# password = "..."
+# token_store = "~/.mcps/garmin"
+# verify_tls = true
 """
 
 

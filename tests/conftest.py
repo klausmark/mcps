@@ -111,6 +111,20 @@ def nirvana_section() -> SectionConfig:
 
 
 @pytest.fixture
+def garmin_section(fake_home: Path) -> SectionConfig:
+    return SectionConfig(
+        name="garmin",
+        data={
+            "email": "garmin-user@example.com",
+            "password": "garmin-secret-pw",
+            "token_store": str(fake_home / ".mcps" / "garmin"),
+        },
+        http_timeout=5.0,
+        verify_tls=True,
+    )
+
+
+@pytest.fixture
 def server_config(
     homeassistant_section: SectionConfig,
     tmp_log_file: Path,
