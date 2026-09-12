@@ -103,6 +103,14 @@ docs/
   `integrations/__init__.py::INTEGRATIONS` and write tests under
   `tests/integrations/`.
 
+## Working agreements
+
+- Run tests before committing (`uv run pytest`; lint with `uv run ruff check src tests`).
+- Do not modify files outside your assigned scope.
+- Do not change public interfaces without documenting it.
+- Keep commits small.
+- Never rewrite another agent's commits.
+
 ## Common tasks
 
 - Install:       `uv sync`
